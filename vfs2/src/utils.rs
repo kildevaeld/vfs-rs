@@ -2,9 +2,8 @@
 use super::glob::GlobWalkDirIter;
 use super::traits::{ReadPath, VMetadata, WritePath, VFS};
 use crossbeam;
-use crossbeam::channel::{bounded, Receiver, Sender};
+use crossbeam::channel::bounded;
 use std::io;
-use std::thread;
 
 impl<T: ?Sized> ReadPathExt for T where T: ReadPath {}
 
