@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "vfs",
+    "vfs2",
+    "vfs-cli"
+]

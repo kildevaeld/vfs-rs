@@ -1,0 +1,8 @@
+[package]
+name = "vfs-cli"
+version = "0.1.0"
+authors = ["Rasmus Kildevæld <rasmuskildevaeld@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+vfs2 = { path = "../vfs2" , features = ["glob"] }
