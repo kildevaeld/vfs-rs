@@ -367,9 +367,6 @@ impl VPath for MemoryPath {
         None
     }
 
-    // fn box_clone(&self) -> Box<VPath> {
-    //     Box::new((*self).clone())
-    // }
 }
 
 impl ReadPath for MemoryPath {
