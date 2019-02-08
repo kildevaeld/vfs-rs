@@ -1,9 +1,12 @@
+use std::env;
 use vfs2::boxed::read_box;
 use vfs2::physical::*;
 use vfs2::prelude::*;
 
 fn main() {
-    let fs = PhysicalFS::new("/Users/rasmus/.marks/rust/vfs").unwrap();
+    let pwd = env::current_dir().unwrap();
+
+    let fs = PhysicalFS::new(pwd).unwrap();
     let path = fs.path("");
 
     // let iter = GlobWalkDirIter::new(path, "**/*.{rs,toml}");

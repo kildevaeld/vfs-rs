@@ -136,23 +136,16 @@ impl VPath for PathBuf {
     }
 
     fn metadata(&self) -> Result<Self::Metadata> {
-        <Path>::metadata(self) //.map(|x| Box::new(x) as Box<VMetadata>)
+        <Path>::metadata(self)
     }
 
     fn read_dir(&self) -> Result<Self::Iterator> {
-        <Path>::read_dir(self).map(|inner| {
-            //Box::new(PhysicalReadDir { inner: inner }) as Box<Iterator<Item = Result<Box<VPath>>>>
-            PhysicalReadDir { inner: inner }
-        })
+        <Path>::read_dir(self).map(|inner| PhysicalReadDir { inner: inner })
     }
 
     fn to_string(&self) -> Cow<str> {
         <Path>::to_string_lossy(self)
     }
-
-    // fn box_clone(&self) -> Box<Self> {
-    //     Box::new((*self).clone())
-    // }
 
     fn to_path_buf(&self) -> Option<PathBuf> {
         Some(self.clone())
