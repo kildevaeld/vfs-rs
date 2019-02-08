@@ -4,7 +4,6 @@ use super::glob::GlobWalkDirIter;
 use super::traits::{ReadPath, VMetadata, WritePath};
 
 impl<T: ?Sized> ReadPathExt for T where T: ReadPath {}
-impl<T: ?Sized> WritePathExt for T where T: WritePath {}
 
 pub trait ReadPathExt: ReadPath {
     fn walk_dir(&self) -> WalkDirIter<Self> {
@@ -19,12 +18,6 @@ pub trait ReadPathExt: ReadPath {
     #[cfg(feature = "glob")]
     fn glob_walk_set<S: AsRef<str>>(&self, pattern: Vec<S>) -> GlobWalkDirIter<Self> {
         GlobWalkDirIter::new_set(self.clone(), pattern)
-    }
-}
-
-pub trait WritePathExt: WritePath {
-    fn walk_dir(&self) -> WalkDirIter<Self> {
-        WalkDirIter::new(self.clone())
     }
 }
 
