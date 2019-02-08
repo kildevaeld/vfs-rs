@@ -1,5 +1,7 @@
 use super::traits::*;
+use std::fmt::Debug;
 use std::io::{Read, Result, Write};
+use std::path::PathBuf;
 
 pub trait BVFS {
     fn path(&self, path: &str) -> Box<dyn BPath>;
@@ -13,7 +15,7 @@ pub trait BWriteVFS: BReadVFS {
     fn write(&self, path: &str) -> Box<dyn BWritePath>;
 }
 
-pub trait BPath {
+pub trait BPath: Debug + Send + Sync {
     fn file_name(&self) -> Option<String>;
 
     /// The extension of this filename
@@ -30,12 +32,13 @@ pub trait BPath {
 
     /// Get the file's metadata
     fn metadata(&self) -> Result<Box<dyn VMetadata>>;
+    fn box_clone(&self) -> Box<dyn BPath>;
 }
 
 pub trait BReadPath: BPath {
-    fn open(&self) -> Result<Box<dyn Read>>;
+    fn open(&self) -> Result<Box<dyn Read + Send>>;
     fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>>;
-    fn box_clone(&self) -> Box<dyn BReadPath>;
+    fn box_read_clone(&self) -> Box<dyn BReadPath>;
 }
 
 pub trait BFile: Read + Write {}
@@ -53,11 +56,11 @@ pub trait BWritePath: BPath {
     fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
     fn rm_all(&self) -> Result<()>;
-    fn box_clone(&self) -> Box<dyn BWritePath>;
-
+    fn box_write_clone(&self) -> Box<dyn BWritePath>;
     fn box_read_clone(&self) -> Box<dyn BReadPath>;
 }
 
+#[derive(Debug)]
 struct BPathWrapper<P> {
     inner: P,
 }
@@ -101,13 +104,19 @@ where
             Err(e) => Err(e),
         }
     }
+
+    fn box_clone(&self) -> Box<dyn BPath> {
+        Box::new(BPathWrapper {
+            inner: self.inner.clone(),
+        })
+    }
 }
 
 impl<P> BReadPath for BPathWrapper<P>
 where
     P: ReadPath + 'static,
 {
-    fn open(&self) -> Result<Box<dyn Read>> {
+    fn open(&self) -> Result<Box<dyn Read + Send>> {
         match self.inner.open() {
             Ok(m) => Ok(Box::new(m)),
             Err(e) => Err(e),
@@ -121,7 +130,7 @@ where
         }
     }
 
-    fn box_clone(&self) -> Box<dyn BReadPath> {
+    fn box_read_clone(&self) -> Box<dyn BReadPath> {
         let path = Box::new(BPathWrapper {
             inner: self.inner.clone(),
         });
@@ -172,7 +181,7 @@ where
         self.inner.rm_all()
     }
 
-    fn box_clone(&self) -> Box<dyn BWritePath> {
+    fn box_write_clone(&self) -> Box<dyn BWritePath> {
         let path = Box::new(BPathWrapper {
             inner: self.inner.clone(),
         });
@@ -189,12 +198,18 @@ where
 
 impl Clone for Box<dyn BReadPath> {
     fn clone(&self) -> Box<dyn BReadPath> {
-        self.box_clone()
+        self.box_read_clone()
     }
 }
 
 impl Clone for Box<dyn BWritePath> {
     fn clone(&self) -> Box<dyn BWritePath> {
+        self.box_write_clone()
+    }
+}
+
+impl Clone for Box<dyn BPath> {
+    fn clone(&self) -> Box<dyn BPath> {
         self.box_clone()
     }
 }
@@ -282,6 +297,114 @@ where
     <V as VFS>::Path: WritePath,
 {
     Box::new(BVFSWrapper { inner: v })
+}
+
+// VPath support
+impl VPath for Box<dyn BPath> {
+    type Metadata = Box<dyn VMetadata + 'static>;
+
+    fn file_name(&self) -> Option<String> {
+        self.as_ref().file_name()
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        self.as_ref().extension()
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BPath> {
+        self.as_ref().resolve(path)
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BPath>> {
+        self.as_ref().parent()
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        self.as_ref().exists()
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Self::Metadata> {
+        self.as_ref().metadata()
+    }
+
+    fn to_string(&self) -> std::borrow::Cow<str> {
+        std::borrow::Cow::default()
+    }
+
+    fn to_path_buf(&self) -> Option<PathBuf> {
+        None
+    }
+}
+
+impl VPath for Box<dyn BReadPath> {
+    type Metadata = Box<dyn VMetadata + 'static>;
+
+    fn file_name(&self) -> Option<String> {
+        self.as_ref().file_name()
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        self.as_ref().extension()
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BReadPath> {
+        Box::new(self.as_ref().resolve(path))
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BReadPath>> {
+        self.as_ref().parent()
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        self.as_ref().exists()
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Self::Metadata> {
+        self.as_ref().metadata()
+    }
+
+    fn to_string(&self) -> std::borrow::Cow<str> {
+        std::borrow::Cow::default()
+    }
+
+    fn to_path_buf(&self) -> Option<PathBuf> {
+        None
+    }
+}
+
+impl ReadPath for Box<dyn BReadPath> {
+    type Read = Box<dyn Read + Send>;
+    type Iterator = Box<dyn Iterator<Item = Result<Box<dyn BReadPath + 'static>>>>;
+
+    fn open(&self) -> Result<Self::Read> {
+        self.as_ref().open()
+    }
+
+    fn read_dir(&self) -> Result<Self::Iterator> {
+        self.as_ref().read_dir()
+    }
+}
+
+impl VMetadata for Box<dyn VMetadata> {
+    fn is_dir(&self) -> bool {
+        self.as_ref().is_dir()
+    }
+    fn is_file(&self) -> bool {
+        self.as_ref().is_file()
+    }
+    fn len(&self) -> u64 {
+        self.as_ref().len()
+    }
 }
 
 #[cfg(test)]

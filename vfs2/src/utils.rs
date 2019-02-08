@@ -1,7 +1,10 @@
-// use super::boxed::{BReadPath, BWritePath};
 #[cfg(feature = "glob")]
 use super::glob::GlobWalkDirIter;
-use super::traits::{ReadPath, VMetadata, WritePath};
+use super::traits::{ReadPath, VMetadata, WritePath, VFS};
+use crossbeam;
+use crossbeam::channel::{bounded, Receiver, Sender};
+use std::io;
+use std::thread;
 
 impl<T: ?Sized> ReadPathExt for T where T: ReadPath {}
 
@@ -54,4 +57,42 @@ where
         }
         res
     }
+}
+
+pub fn copy<S, P, D>(source: S, dest: D)
+where
+    S: Iterator<Item = P> + Send,
+    P: ReadPath,
+    D: VFS + Send + Sync,
+    <D as VFS>::Path: WritePath,
+{
+    crossbeam::scope(|scope| {
+        let (sx, rx) = bounded(10);
+        scope.spawn(move |_| {
+            for p in source {
+                let meta = match p.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+
+                if !meta.is_file() {
+                    continue;
+                }
+
+                let file = p.open().unwrap();
+
+                sx.send((p, file)).unwrap();
+            }
+        });
+        scope.spawn(move |_| loop {
+            let (path, mut reader) = match rx.recv() {
+                Ok(m) => m,
+                Err(_) => return,
+            };
+            let path = dest.path(&path.to_string());
+            let mut file = path.create().unwrap();
+            io::copy(&mut reader, &mut file).unwrap();
+        });
+    })
+    .unwrap();
 }
