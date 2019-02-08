@@ -32,21 +32,57 @@ pub trait BPath: Debug + Send + Sync {
 
     /// Get the file's metadata
     fn metadata(&self) -> Result<Box<dyn VMetadata>>;
+
+    /// Clone box
     fn box_clone(&self) -> Box<dyn BPath>;
 }
 
-pub trait BReadPath: BPath {
+pub trait BReadPath: Debug + Send + Sync {
+    fn file_name(&self) -> Option<String>;
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String>;
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BReadPath>;
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BReadPath>>;
+
+    /// Check if the file existst
+    fn exists(&self) -> bool;
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Box<dyn VMetadata>>;
+
     fn open(&self) -> Result<Box<dyn Read + Send>>;
     fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>>;
-    fn box_read_clone(&self) -> Box<dyn BReadPath>;
+    fn box_clone(&self) -> Box<dyn BReadPath>;
 }
 
 pub trait BFile: Read + Write {}
 
 impl<T> BFile for T where T: Read + Write {}
 
-pub trait BWritePath: BPath {
-    fn open(&self) -> Result<Box<dyn Read>>;
+pub trait BWritePath: Debug + Send + Sync {
+    fn file_name(&self) -> Option<String>;
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String>;
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BWritePath>;
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BWritePath>>;
+
+    /// Check if the file existst
+    fn exists(&self) -> bool;
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Box<dyn VMetadata>>;
+
+    fn open(&self) -> Result<Box<dyn Read + Send>>;
     fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>>;
     fn create(&self) -> Result<Box<dyn BFile>>;
     fn append(&self) -> Result<Box<dyn BFile>>;
@@ -56,8 +92,7 @@ pub trait BWritePath: BPath {
     fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
     fn rm_all(&self) -> Result<()>;
-    fn box_write_clone(&self) -> Box<dyn BWritePath>;
-    fn box_read_clone(&self) -> Box<dyn BReadPath>;
+    fn box_clone(&self) -> Box<dyn BWritePath>;
 }
 
 #[derive(Debug)]
@@ -116,6 +151,42 @@ impl<P> BReadPath for BPathWrapper<P>
 where
     P: ReadPath + 'static,
 {
+    fn file_name(&self) -> Option<String> {
+        self.inner.file_name()
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        self.inner.extension()
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BReadPath> {
+        let ret = self.inner.resolve(path);
+        Box::new(BPathWrapper { inner: ret })
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BReadPath>> {
+        match self.inner.parent() {
+            Some(m) => Some(Box::new(BPathWrapper { inner: m })),
+            None => None,
+        }
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        self.inner.exists()
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Box<dyn VMetadata>> {
+        match self.inner.metadata() {
+            Ok(m) => Ok(Box::new(m)),
+            Err(e) => Err(e),
+        }
+    }
+
     fn open(&self) -> Result<Box<dyn Read + Send>> {
         match self.inner.open() {
             Ok(m) => Ok(Box::new(m)),
@@ -130,7 +201,7 @@ where
         }
     }
 
-    fn box_read_clone(&self) -> Box<dyn BReadPath> {
+    fn box_clone(&self) -> Box<dyn BReadPath> {
         let path = Box::new(BPathWrapper {
             inner: self.inner.clone(),
         });
@@ -142,7 +213,43 @@ impl<P> BWritePath for BPathWrapper<P>
 where
     P: WritePath + 'static,
 {
-    fn open(&self) -> Result<Box<dyn Read>> {
+    fn file_name(&self) -> Option<String> {
+        self.inner.file_name()
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        self.inner.extension()
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BWritePath> {
+        let ret = self.inner.resolve(path);
+        Box::new(BPathWrapper { inner: ret })
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BWritePath>> {
+        match self.inner.parent() {
+            Some(m) => Some(Box::new(BPathWrapper { inner: m })),
+            None => None,
+        }
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        self.inner.exists()
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Box<dyn VMetadata>> {
+        match self.inner.metadata() {
+            Ok(m) => Ok(Box::new(m)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn open(&self) -> Result<Box<dyn Read + Send>> {
         match self.inner.open() {
             Ok(m) => Ok(Box::new(m)),
             Err(e) => Err(e),
@@ -181,30 +288,30 @@ where
         self.inner.rm_all()
     }
 
-    fn box_write_clone(&self) -> Box<dyn BWritePath> {
+    fn box_clone(&self) -> Box<dyn BWritePath> {
         let path = Box::new(BPathWrapper {
             inner: self.inner.clone(),
         });
         path
     }
 
-    fn box_read_clone(&self) -> Box<dyn BReadPath> {
-        let path = Box::new(BPathWrapper {
-            inner: self.inner.clone(),
-        });
-        path
-    }
+    // fn box_read_clone(&self) -> Box<dyn BReadPath> {
+    //     let path = Box::new(BPathWrapper {
+    //         inner: self.inner.clone(),
+    //     });
+    //     path
+    // }
 }
 
 impl Clone for Box<dyn BReadPath> {
     fn clone(&self) -> Box<dyn BReadPath> {
-        self.box_read_clone()
+        self.box_clone()
     }
 }
 
 impl Clone for Box<dyn BWritePath> {
     fn clone(&self) -> Box<dyn BWritePath> {
-        self.box_write_clone()
+        self.box_clone()
     }
 }
 
@@ -355,7 +462,7 @@ impl VPath for Box<dyn BReadPath> {
 
     /// append a segment to this path
     fn resolve(&self, path: &String) -> Box<dyn BReadPath> {
-        Box::new(self.as_ref().resolve(path))
+        self.as_ref().resolve(path)
     }
 
     /// Get the parent path
