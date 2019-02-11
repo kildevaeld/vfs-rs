@@ -1,6 +1,6 @@
 #[cfg(feature = "glob")]
 use super::glob::GlobWalkDirIter;
-use super::traits::{ReadPath, VMetadata, WritePath, VFS};
+use super::traits::{ReadPath, VMetadata, VPath, WritePath, VFS};
 use crossbeam;
 use crossbeam::channel::bounded;
 use std::io;
@@ -58,7 +58,13 @@ where
     }
 }
 
-pub fn copy<S, P, D>(source: S, dest: D)
+enum Msg<P, F> {
+    File(P, F),
+    Dir(P),
+    Err(io::Error),
+}
+
+pub fn copy<S, P, D: ?Sized>(source: S, dest: &D)
 where
     S: Iterator<Item = P> + Send,
     P: ReadPath,
@@ -74,23 +80,42 @@ where
                     Err(_) => continue,
                 };
 
-                if !meta.is_file() {
+                let msg = if meta.is_dir() {
+                    Msg::Dir(p)
+                } else if meta.is_file() {
+                    if let Some(parent) = p.parent() {
+                        sx.send(Msg::Dir(parent));
+                    }
+                    let file = p.open().unwrap();
+                    Msg::File(p, file)
+                } else {
                     continue;
-                }
+                };
 
-                let file = p.open().unwrap();
-
-                sx.send((p, file)).unwrap();
+                sx.send(msg).unwrap();
             }
         });
         scope.spawn(move |_| loop {
-            let (path, mut reader) = match rx.recv() {
+            let mut msg = match rx.recv() {
                 Ok(m) => m,
                 Err(_) => return,
             };
-            let path = dest.path(&path.to_string());
-            let mut file = path.create().unwrap();
-            io::copy(&mut reader, &mut file).unwrap();
+
+            match &mut msg {
+                Msg::Dir(path) => {
+                    let path = dest.path(&path.to_string());
+                    if path.exists() {
+                        continue;
+                    }
+                    path.mkdir();
+                }
+                Msg::File(path, reader) => {
+                    let path = dest.path(&path.to_string());
+                    let mut file = path.create().unwrap();
+                    io::copy(reader, &mut file).map(|_| ());
+                }
+                Msg::Err(e) => println!("copy error {}", e),
+            }
         });
     })
     .unwrap();

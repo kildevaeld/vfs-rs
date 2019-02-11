@@ -1,4 +1,5 @@
 use super::traits::*;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::io::{Read, Result, Write};
 use std::path::PathBuf;
@@ -7,12 +8,12 @@ pub trait BVFS {
     fn path(&self, path: &str) -> Box<dyn BPath>;
 }
 
-pub trait BReadVFS: BVFS {
-    fn read(&self, path: &str) -> Box<dyn BReadPath>;
+pub trait BReadVFS {
+    fn path(&self, path: &str) -> Box<dyn BReadPath>;
 }
 
-pub trait BWriteVFS: BReadVFS {
-    fn write(&self, path: &str) -> Box<dyn BWritePath>;
+pub trait BWriteVFS {
+    fn path(&self, path: &str) -> Box<dyn BWritePath>;
 }
 
 pub trait BPath: Debug + Send + Sync {
@@ -35,6 +36,8 @@ pub trait BPath: Debug + Send + Sync {
 
     /// Clone box
     fn box_clone(&self) -> Box<dyn BPath>;
+
+    fn to_string(&self) -> Cow<str>;
 }
 
 pub trait BReadPath: Debug + Send + Sync {
@@ -58,11 +61,12 @@ pub trait BReadPath: Debug + Send + Sync {
     fn open(&self) -> Result<Box<dyn Read + Send>>;
     fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>>;
     fn box_clone(&self) -> Box<dyn BReadPath>;
+    fn to_string(&self) -> Cow<str>;
 }
 
-pub trait BFile: Read + Write {}
+pub trait BFile: Read + Write + Send {}
 
-impl<T> BFile for T where T: Read + Write {}
+impl<T> BFile for T where T: Read + Write + Send {}
 
 pub trait BWritePath: Debug + Send + Sync {
     fn file_name(&self) -> Option<String>;
@@ -83,7 +87,8 @@ pub trait BWritePath: Debug + Send + Sync {
     fn metadata(&self) -> Result<Box<dyn VMetadata>>;
 
     fn open(&self) -> Result<Box<dyn Read + Send>>;
-    fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>>;
+    fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BWritePath>>>>>;
+
     fn create(&self) -> Result<Box<dyn BFile>>;
     fn append(&self) -> Result<Box<dyn BFile>>;
     /// Create a directory at the location by this path
@@ -93,6 +98,7 @@ pub trait BWritePath: Debug + Send + Sync {
     /// Remove a file or directory and all its contents
     fn rm_all(&self) -> Result<()>;
     fn box_clone(&self) -> Box<dyn BWritePath>;
+    fn to_string(&self) -> Cow<str>;
 }
 
 #[derive(Debug)]
@@ -145,6 +151,10 @@ where
             inner: self.inner.clone(),
         })
     }
+
+    fn to_string(&self) -> Cow<str> {
+        self.inner.to_string()
+    }
 }
 
 impl<P> BReadPath for BPathWrapper<P>
@@ -196,7 +206,7 @@ where
 
     fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>> {
         match self.inner.read_dir() {
-            Ok(m) => Ok(Box::new(BIterator::<P::Iterator, P>::new(m))),
+            Ok(m) => Ok(Box::new(BReadIterator::<P::Iterator, P>::new(m))),
             Err(e) => Err(e),
         }
     }
@@ -206,6 +216,10 @@ where
             inner: self.inner.clone(),
         });
         path
+    }
+
+    fn to_string(&self) -> Cow<str> {
+        self.inner.to_string()
     }
 }
 
@@ -256,9 +270,9 @@ where
         }
     }
 
-    fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BReadPath>>>>> {
+    fn read_dir(&self) -> Result<Box<Iterator<Item = Result<Box<dyn BWritePath>>>>> {
         match self.inner.read_dir() {
-            Ok(m) => Ok(Box::new(BIterator::<P::Iterator, P>::new(m))),
+            Ok(m) => Ok(Box::new(BWriteIterator::<P::Iterator, P>::new(m))),
             Err(e) => Err(e),
         }
     }
@@ -295,12 +309,9 @@ where
         path
     }
 
-    // fn box_read_clone(&self) -> Box<dyn BReadPath> {
-    //     let path = Box::new(BPathWrapper {
-    //         inner: self.inner.clone(),
-    //     });
-    //     path
-    // }
+    fn to_string(&self) -> Cow<str> {
+        self.inner.to_string()
+    }
 }
 
 impl Clone for Box<dyn BReadPath> {
@@ -321,26 +332,57 @@ impl Clone for Box<dyn BPath> {
     }
 }
 
-struct BIterator<Iter, I> {
+struct BReadIterator<Iter, I> {
     inner: Iter,
     _i: std::marker::PhantomData<I>,
 }
 
-impl<Iter, I> BIterator<Iter, I> {
-    pub fn new(inner: Iter) -> BIterator<Iter, I> {
-        BIterator {
+impl<Iter, I> BReadIterator<Iter, I> {
+    pub fn new(inner: Iter) -> BReadIterator<Iter, I> {
+        BReadIterator {
             inner,
             _i: std::marker::PhantomData,
         }
     }
 }
 
-impl<Iter, I> Iterator for BIterator<Iter, I>
+impl<Iter, I> Iterator for BReadIterator<Iter, I>
 where
     Iter: Iterator<Item = Result<I>>,
     I: ReadPath + 'static,
 {
     type Item = Result<Box<dyn BReadPath>>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner.next() {
+            Some(m) => match m {
+                Ok(m) => Some(Ok(Box::new(BPathWrapper { inner: m }))),
+                Err(e) => Some(Err(e)),
+            },
+            None => None,
+        }
+    }
+}
+
+struct BWriteIterator<Iter, I> {
+    inner: Iter,
+    _i: std::marker::PhantomData<I>,
+}
+
+impl<Iter, I> BWriteIterator<Iter, I> {
+    pub fn new(inner: Iter) -> BWriteIterator<Iter, I> {
+        BWriteIterator {
+            inner,
+            _i: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<Iter, I> Iterator for BWriteIterator<Iter, I>
+where
+    Iter: Iterator<Item = Result<I>>,
+    I: WritePath + 'static,
+{
+    type Item = Result<Box<dyn BWritePath>>;
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.next() {
             Some(m) => match m {
@@ -373,7 +415,7 @@ where
     V: VFS,
     <V as VFS>::Path: ReadPath + 'static,
 {
-    fn read(&self, path: &str) -> Box<dyn BReadPath> {
+    fn path(&self, path: &str) -> Box<dyn BReadPath> {
         return Box::new(BPathWrapper {
             inner: self.inner.path(path),
         });
@@ -385,10 +427,31 @@ where
     V: VFS,
     <V as VFS>::Path: WritePath + 'static,
 {
-    fn write(&self, path: &str) -> Box<dyn BWritePath> {
+    fn path(&self, path: &str) -> Box<dyn BWritePath> {
         return Box::new(BPathWrapper {
             inner: self.inner.path(path),
         });
+    }
+}
+
+impl VFS for Box<dyn BVFS> {
+    type Path = Box<dyn BPath>;
+    fn path(&self, path: &str) -> Self::Path {
+        self.as_ref().path(path)
+    }
+}
+
+impl VFS for Box<dyn BReadVFS> {
+    type Path = Box<dyn BReadPath>;
+    fn path(&self, path: &str) -> Self::Path {
+        self.as_ref().path(path)
+    }
+}
+
+impl VFS for Box<dyn BWriteVFS> {
+    type Path = Box<dyn BWritePath>;
+    fn path(&self, path: &str) -> Self::Path {
+        self.as_ref().path(path)
     }
 }
 
@@ -440,7 +503,7 @@ impl VPath for Box<dyn BPath> {
     }
 
     fn to_string(&self) -> std::borrow::Cow<str> {
-        std::borrow::Cow::default()
+        self.as_ref().to_string()
     }
 
     fn to_path_buf(&self) -> Option<PathBuf> {
@@ -481,7 +544,7 @@ impl VPath for Box<dyn BReadPath> {
     }
 
     fn to_string(&self) -> std::borrow::Cow<str> {
-        std::borrow::Cow::default()
+        self.as_ref().to_string()
     }
 
     fn to_path_buf(&self) -> Option<PathBuf> {
@@ -499,6 +562,83 @@ impl ReadPath for Box<dyn BReadPath> {
 
     fn read_dir(&self) -> Result<Self::Iterator> {
         self.as_ref().read_dir()
+    }
+}
+
+impl VPath for Box<dyn BWritePath> {
+    type Metadata = Box<dyn VMetadata + 'static>;
+
+    fn file_name(&self) -> Option<String> {
+        self.as_ref().file_name()
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        self.as_ref().extension()
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &String) -> Box<dyn BWritePath> {
+        self.as_ref().resolve(path)
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BWritePath>> {
+        self.as_ref().parent()
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        self.as_ref().exists()
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Self::Metadata> {
+        self.as_ref().metadata()
+    }
+
+    fn to_string(&self) -> std::borrow::Cow<str> {
+        self.as_ref().to_string()
+    }
+
+    fn to_path_buf(&self) -> Option<PathBuf> {
+        None
+    }
+}
+
+impl ReadPath for Box<dyn BWritePath> {
+    type Read = Box<dyn Read + Send>;
+    type Iterator = Box<dyn Iterator<Item = Result<Box<dyn BWritePath + 'static>>>>;
+
+    fn open(&self) -> Result<Self::Read> {
+        self.as_ref().open()
+    }
+
+    fn read_dir(&self) -> Result<Self::Iterator> {
+        self.as_ref().read_dir()
+    }
+}
+
+impl WritePath for Box<dyn BWritePath> {
+    type Write = Box<dyn BFile>;
+
+    fn create(&self) -> Result<Self::Write> {
+        self.as_ref().create()
+    }
+    fn append(&self) -> Result<Self::Write> {
+        self.as_ref().append()
+    }
+    /// Create a directory at the location by this path
+    fn mkdir(&self) -> Result<()> {
+        self.as_ref().mkdir()
+    }
+    /// Remove a file
+    fn rm(&self) -> Result<()> {
+        self.as_ref().rm()
+    }
+    /// Remove a file or directory and all its contents
+    fn rm_all(&self) -> Result<()> {
+        self.as_ref().rm_all()
     }
 }
 
@@ -524,7 +664,7 @@ mod tests {
     fn it_works() {
         let m = MemoryFS::new();
         let b = write_box(m);
-        let mut f = b.write("/test.txt").create().unwrap();
+        let mut f = b.path("/test.txt").create().unwrap();
         f.write(b"Hello, World!");
         f.flush();
     }

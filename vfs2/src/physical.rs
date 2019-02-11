@@ -1,17 +1,20 @@
 //! A "physical" file system implementation using the underlying OS file system
 
 use super::traits::{ReadPath, VMetadata, VPath, WritePath, VFS};
+use pathutils;
 use std::borrow::Cow;
+use std::fmt::{self, Debug};
 use std::fs::{
     canonicalize, remove_dir, remove_dir_all, remove_file, DirBuilder, File, Metadata,
     OpenOptions as FSOpenOptions, ReadDir,
 };
 use std::io::Result;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// A "physical" file system implementation using the underlying OS file system
 pub struct PhysicalFS {
-    root: PathBuf,
+    root: Arc<PathBuf>,
 }
 
 impl PhysicalFS {
@@ -22,7 +25,9 @@ impl PhysicalFS {
 
         let abs = canonicalize(path)?;
 
-        Ok(PhysicalFS { root: abs })
+        Ok(PhysicalFS {
+            root: Arc::new(abs),
+        })
     }
 }
 
@@ -39,123 +44,192 @@ impl VMetadata for Metadata {
 }
 
 impl VFS for PhysicalFS {
-    // type PATH = PathBuf;
-    // type FILE = File;
-    // type METADATA = Metadata;
-    type Path = PathBuf;
+    type Path = PhysicalPath;
 
-    fn path(&self, path: &str) -> PathBuf {
-        if path.is_empty() {
-            return self.root.clone();
+    fn path(&self, path: &str) -> PhysicalPath {
+        if path.is_empty() || path == "." {
+            return PhysicalPath {
+                root: self.root.clone(),
+                path: "".to_owned(),
+                full_path: self.root.as_path().to_path_buf(),
+            };
+        } else if path == ".." {
+            panic!("invalid path");
         }
+        let fp = pathutils::join(self.root.as_path(), &path).unwrap();
         if path.chars().nth(0).unwrap() == '/' {
-            return self.root.join(path.chars().skip(1).collect::<String>());
+            return PhysicalPath {
+                root: self.root.clone(),
+                path: path.to_string(),
+                full_path: fp,
+            };
         }
+        let path = format!("/{}", path);
 
-        self.root.join(path)
+        PhysicalPath {
+            root: self.root.clone(),
+            path: path,
+            full_path: fp,
+        }
     }
 }
 
-impl VPath for PathBuf {
+#[derive(Clone, PartialEq, PartialOrd)]
+pub struct PhysicalPath {
+    root: Arc<PathBuf>,
+    path: String,
+    full_path: PathBuf,
+}
+
+impl VPath for PhysicalPath {
     type Metadata = Metadata;
 
     fn parent(&self) -> Option<Self> {
-        match <Path>::parent(&self) {
-            Some(path) => Some(path.to_path_buf()),
+        match self.full_path.parent() {
+            Some(path) => {
+                let replaced = path
+                    .to_string_lossy()
+                    .replace(self.root.to_str().unwrap(), "");
+
+                Some(PhysicalPath {
+                    root: self.root.clone(),
+                    path: replaced.to_string(),
+                    full_path: match pathutils::join(self.root.as_path(), &replaced) {
+                        Ok(m) => m,
+                        Err(_) => return None,
+                    },
+                })
+            }
             None => None,
         }
     }
 
     fn file_name(&self) -> Option<String> {
-        match <Path>::file_name(&self) {
-            Some(name) => Some(name.to_string_lossy().into_owned()),
+        match pathutils::filename(&self.path) {
+            Some(name) => Some(name),
             None => None,
         }
     }
 
     fn extension(&self) -> Option<String> {
-        match <Path>::extension(&self) {
-            Some(name) => Some(name.to_string_lossy().into_owned()),
+        match pathutils::extname(&self.path) {
+            Some(name) => Some(name),
             None => None,
         }
     }
 
     fn resolve(&self, path: &String) -> Self {
-        let mut result = self.clone();
-        <PathBuf>::push(&mut result, path);
-        return result;
+        let full_path = pathutils::join(self.root.as_path(), path).unwrap();
+        let path = full_path
+            .to_str()
+            .unwrap()
+            .replace(self.root.to_str().unwrap(), "");
+        return PhysicalPath {
+            path: path,
+            root: self.root.clone(),
+            full_path: full_path,
+        };
     }
 
     fn exists(&self) -> bool {
-        <Path>::exists(self)
+        self.full_path.exists()
     }
 
     fn metadata(&self) -> Result<Self::Metadata> {
-        <Path>::metadata(self)
+        self.full_path.metadata()
     }
 
     fn to_path_buf(&self) -> Option<PathBuf> {
-        Some(self.clone())
+        Some(self.full_path.clone())
     }
 
     fn to_string(&self) -> Cow<str> {
-        <Path>::to_string_lossy(self)
+        Cow::from(&self.path)
     }
 }
 
-impl ReadPath for PathBuf {
+impl Debug for PhysicalPath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "PhysicalPath<Root={:?}, Path={:?}, FullPath={:?}>",
+            self.root, self.path, self.full_path
+        )
+    }
+}
+
+impl ReadPath for PhysicalPath {
     type Read = File;
     type Iterator = PhysicalReadDir;
     fn open(&self) -> Result<File> {
-        File::open(&self)
+        File::open(&self.full_path)
     }
 
     fn read_dir(&self) -> Result<PhysicalReadDir> {
-        <Path>::read_dir(self).map(|inner| PhysicalReadDir { inner: inner })
+        self.full_path.read_dir().map(|inner| PhysicalReadDir {
+            inner: inner,
+            root: self.root.clone(),
+        })
     }
 }
 
-impl WritePath for PathBuf {
+impl WritePath for PhysicalPath {
     type Write = File;
     fn create(&self) -> Result<File> {
-        File::create(&self)
+        File::create(&self.full_path)
     }
 
     fn append(&self) -> Result<File> {
-        FSOpenOptions::new().write(true).append(true).open(&self)
+        FSOpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(&self.full_path)
     }
 
     fn mkdir(&self) -> Result<()> {
-        DirBuilder::new().recursive(true).create(&self)
+        DirBuilder::new().recursive(true).create(&self.full_path)
     }
 
     fn rm(&self) -> Result<()> {
-        if self.is_dir() {
-            remove_dir(&self)
+        if self.full_path.is_dir() {
+            remove_dir(&self.full_path)
         } else {
-            remove_file(&self)
+            remove_file(&self.full_path)
         }
     }
 
     fn rm_all(&self) -> Result<()> {
-        if self.is_dir() {
-            remove_dir_all(&self)
+        if self.full_path.is_dir() {
+            remove_dir_all(&self.full_path)
         } else {
-            remove_file(&self)
+            remove_file(&self.full_path)
         }
     }
 }
 
 pub struct PhysicalReadDir {
     inner: ReadDir,
+    root: Arc<PathBuf>,
 }
 
 impl Iterator for PhysicalReadDir {
-    type Item = Result<PathBuf>;
+    type Item = Result<PhysicalPath>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner
-            .next()
-            .map(|result| result.map(|entry| entry.path()))
+        self.inner.next().map(|result| {
+            result.map(|entry| {
+                let fullp = entry.path();
+                let path = fullp
+                    .to_str()
+                    .unwrap()
+                    .replace(self.root.to_str().unwrap(), "");
+
+                PhysicalPath {
+                    root: self.root.clone(),
+                    full_path: fullp,
+                    path: path,
+                }
+            })
+        })
     }
 }
 
@@ -168,7 +242,8 @@ mod tests {
     use super::*;
     #[test]
     fn read_file() {
-        let path = PathBuf::from("Cargo.toml");
+        let vfs = PhysicalFS::new(".").unwrap();
+        let path = vfs.path("Cargo.toml");
         let mut file = path.open().unwrap();
         let mut string: String = "".to_owned();
         file.read_to_string(&mut string).unwrap();
@@ -179,30 +254,34 @@ mod tests {
     }
     #[test]
     fn parent() {
-        let src = PathBuf::from("./src");
-        let parent = PathBuf::from(".");
+        let vfs = PhysicalFS::new(".").unwrap();
+        let src = vfs.path("./src");
+        let parent = vfs.path(".");
         assert_eq!(src.parent().unwrap().to_string(), parent.to_string());
         assert!(PathBuf::from("/").parent().is_none());
     }
 
     #[test]
     fn read_dir() {
-        let src = PathBuf::from("./src");
-        let entries: Vec<Result<PathBuf>> = src.read_dir().unwrap().collect();
+        let vfs = PhysicalFS::new(".").unwrap();
+        let src = vfs.path("./src");
+        let entries: Vec<Result<PhysicalPath>> = src.read_dir().unwrap().collect();
         println!("{:#?}", entries);
     }
 
     #[test]
     fn file_name() {
-        let src = PathBuf::from("./src/lib.rs");
+        let vfs = PhysicalFS::new(".").unwrap();
+        let src = vfs.path("./src/lib.rs");
         assert_eq!(src.file_name(), Some("lib.rs".to_owned()));
         assert_eq!(src.extension(), Some("rs".to_owned()));
     }
 
-    #[test]
-    fn to_path_buf() {
-        let src = PathBuf::from("./src/lib.rs");
-        assert_eq!(Some(src.clone()), src.to_path_buf());
-    }
+    // #[test]
+    // fn to_path_buf() {
+    //     let vfs = PhysicalFS::new(".").unwrap();
+    //     let src = vfs.path("./src/lib.rs");
+    //     assert_eq!(Some(src.clone()), src.to_path_buf());
+    // }
 
 }

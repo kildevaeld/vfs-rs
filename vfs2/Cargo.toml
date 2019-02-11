@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 globset = { version = "^0.4", optional = true }
 crossbeam = {  version = "^0.7" }
+pathutils = { path = "../../pathutils" }
 
 [features]
 default = []
