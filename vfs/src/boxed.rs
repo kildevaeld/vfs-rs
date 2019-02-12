@@ -5,15 +5,15 @@ use std::io::{Read, Result, Write};
 use std::path::PathBuf;
 
 pub trait BVFS {
-    fn path(&self, path: &str) -> Box<dyn BPath>;
+    fn path(&self, path: &str) -> Box<dyn BPath + Send + Sync>;
 }
 
 pub trait BReadVFS {
-    fn path(&self, path: &str) -> Box<dyn BReadPath>;
+    fn path(&self, path: &str) -> Box<dyn BReadPath + Send + Sync>;
 }
 
 pub trait BWriteVFS {
-    fn path(&self, path: &str) -> Box<dyn BWritePath>;
+    fn path(&self, path: &str) -> Box<dyn BWritePath + Send + Sync>;
 }
 
 pub trait BPath: Debug + Send + Sync {
@@ -403,7 +403,7 @@ where
     V: VFS,
     <V as VFS>::Path: 'static,
 {
-    fn path(&self, path: &str) -> Box<dyn BPath> {
+    fn path(&self, path: &str) -> Box<dyn BPath + Send + Sync> {
         return Box::new(BPathWrapper {
             inner: self.inner.path(path),
         });
@@ -415,7 +415,7 @@ where
     V: VFS,
     <V as VFS>::Path: ReadPath + 'static,
 {
-    fn path(&self, path: &str) -> Box<dyn BReadPath> {
+    fn path(&self, path: &str) -> Box<dyn BReadPath + Send + Sync> {
         return Box::new(BPathWrapper {
             inner: self.inner.path(path),
         });
@@ -427,7 +427,7 @@ where
     V: VFS,
     <V as VFS>::Path: WritePath + 'static,
 {
-    fn path(&self, path: &str) -> Box<dyn BWritePath> {
+    fn path(&self, path: &str) -> Box<dyn BWritePath + Send + Sync> {
         return Box::new(BPathWrapper {
             inner: self.inner.path(path),
         });
