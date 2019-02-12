@@ -1,7 +1,8 @@
 use super::traits::{ReadPath, VPath};
 use super::utils::WalkDirIter;
-use globset::{Glob, GlobMatcher, GlobSet, GlobSetBuilder};
+use globset::{Candidate, Glob, GlobMatcher, GlobSet, GlobSetBuilder};
 
+#[derive(Clone)]
 enum Globber {
     Single(GlobMatcher),
     Set(GlobSet),
@@ -18,7 +19,6 @@ where
 {
     pub fn new<S: AsRef<str>>(path: P, pattern: S) -> GlobWalkDirIter<P> {
         let glob = Glob::new(pattern.as_ref()).unwrap().compile_matcher();
-
         GlobWalkDirIter {
             inner: WalkDirIter::new(path),
             glob: Globber::Single(glob),

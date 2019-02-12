@@ -10,7 +10,7 @@ fn main() {
     let fs = PhysicalFS::new(&pwd).unwrap();
     let path = fs.path("");
 
-    for next in path.glob_walk_set(vec!["**/*.{rs,toml}", ".toml"]) {
+    for next in path.glob_walk_set(vec!["**/*.{rs,toml}", "*.toml"]) {
         println!("found {:?}", next);
     }
 

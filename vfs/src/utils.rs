@@ -23,13 +23,28 @@ pub trait ReadPathExt: ReadPath {
     }
 }
 
+fn noop<P: VPath>(path: &P) -> bool {
+    true
+}
+
 pub struct WalkDirIter<P> {
     todo: Vec<P>,
+    f: Box<(Fn(&P) -> bool) + Send>,
 }
 
 impl<P> WalkDirIter<P> {
     pub fn new(path: P) -> WalkDirIter<P> {
-        WalkDirIter { todo: vec![path] }
+        WalkDirIter {
+            todo: vec![path],
+            f: Box::new(|_| true),
+        }
+    }
+
+    pub fn from<F: (Fn(&P) -> bool) + 'static + Send>(path: P, f: F) -> WalkDirIter<P> {
+        WalkDirIter {
+            todo: vec![path],
+            f: Box::new(f),
+        }
     }
 }
 
@@ -43,7 +58,7 @@ where
         let res = self.todo.pop();
         if let Some(ref path) = res {
             if let Ok(metadata) = path.metadata() {
-                if metadata.is_dir() {
+                if metadata.is_dir() && (path.to_string() == "" || (self.f)(path)) {
                     if let Ok(entries) = path.read_dir() {
                         for entry in entries {
                             if let Ok(child) = entry {

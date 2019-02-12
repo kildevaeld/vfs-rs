@@ -11,4 +11,4 @@ pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
 
 [features]
 default = []
-glob = ["globset"]
+glob = ["globset", "pathutils/glob"]
