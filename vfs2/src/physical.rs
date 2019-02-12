@@ -1,5 +1,3 @@
-//! A "physical" file system implementation using the underlying OS file system
-
 use super::traits::{ReadPath, VMetadata, VPath, WritePath, VFS};
 use pathutils;
 use std::borrow::Cow;
