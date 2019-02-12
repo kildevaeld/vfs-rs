@@ -1,8 +1,8 @@
 use std::env;
-use vfs2::boxed::read_box;
-use vfs2::memory::*;
-use vfs2::physical::*;
-use vfs2::prelude::*;
+use vfs::boxed::read_box;
+use vfs::memory::*;
+use vfs::physical::*;
+use vfs::prelude::*;
 
 fn main() {
     let pwd = env::current_dir().unwrap();

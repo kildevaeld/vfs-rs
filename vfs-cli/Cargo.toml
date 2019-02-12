@@ -5,4 +5,4 @@ authors = ["Rasmus Kildevæld <rasmuskildevaeld@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-vfs2 = { path = "../vfs2" , features = ["glob"] }
+vfs = { path = "../vfs" , features = ["glob"] }
