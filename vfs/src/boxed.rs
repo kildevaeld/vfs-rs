@@ -4,15 +4,15 @@ use std::fmt::Debug;
 use std::io::{Read, Result, Write};
 use std::path::PathBuf;
 
-pub trait BVFS {
+pub trait BVFS: Sync + Send {
     fn path(&self, path: &str) -> Box<dyn BPath + Send + Sync>;
 }
 
-pub trait BReadVFS {
+pub trait BReadVFS: Sync + Send {
     fn path(&self, path: &str) -> Box<dyn BReadPath + Send + Sync>;
 }
 
-pub trait BWriteVFS {
+pub trait BWriteVFS: Sync + Send {
     fn path(&self, path: &str) -> Box<dyn BWritePath + Send + Sync>;
 }
 

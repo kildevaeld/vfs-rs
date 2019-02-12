@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::io::{Read, Result, Write};
 use std::path::PathBuf;
 
-pub trait VFS {
+pub trait VFS: Sync + Send {
     type Path: VPath;
     fn path(&self, path: &str) -> Self::Path;
 }
