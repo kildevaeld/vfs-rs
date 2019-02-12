@@ -5,3 +5,10 @@ authors = ["Rasmus Kildevæld <rasmuskildevaeld@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+globset = { version = "^0.4", optional = true }
+crossbeam = {  version = "^0.7" }
+pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
+
+[features]
+default = []
+glob = ["globset"]
