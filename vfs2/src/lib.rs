@@ -2,6 +2,7 @@ pub mod boxed;
 #[cfg(feature = "glob")]
 pub mod glob;
 pub mod memory;
+pub mod overlay;
 pub mod physical;
 mod traits;
 mod utils;

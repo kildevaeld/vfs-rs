@@ -87,9 +87,12 @@ impl VPath for PhysicalPath {
     fn parent(&self) -> Option<Self> {
         match self.full_path.parent() {
             Some(path) => {
-                let replaced = path
-                    .to_string_lossy()
-                    .replace(self.root.to_str().unwrap(), "");
+                let path = path.to_string_lossy();
+                let replaced = path.replace(self.root.to_str().unwrap(), "");
+
+                if String::from(path) == replaced {
+                    return None;
+                }
 
                 Some(PhysicalPath {
                     root: self.root.clone(),
@@ -262,6 +265,13 @@ mod tests {
     }
 
     #[test]
+    fn parent_err() {
+        let vfs = PhysicalFS::new(".").unwrap();
+        let src = vfs.path("");
+        assert!(src.parent().is_none());
+    }
+
+    #[test]
     fn read_dir() {
         let vfs = PhysicalFS::new(".").unwrap();
         let src = vfs.path("./src");
@@ -281,7 +291,7 @@ mod tests {
     // fn to_path_buf() {
     //     let vfs = PhysicalFS::new(".").unwrap();
     //     let src = vfs.path("./src/lib.rs");
-    //     assert_eq!(Some(src.clone()), src.to_path_buf());
+    //     //assert_eq!(Some(src.clone()), src.to_path_buf());
     // }
 
 }

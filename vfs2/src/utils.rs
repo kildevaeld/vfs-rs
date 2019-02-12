@@ -61,7 +61,7 @@ where
 enum Msg<P, F> {
     File(P, F),
     Dir(P),
-    Err(io::Error),
+    //Err(io::Error),
 }
 
 pub fn copy<S, P, D: ?Sized>(source: S, dest: &D)
@@ -84,7 +84,7 @@ where
                     Msg::Dir(p)
                 } else if meta.is_file() {
                     if let Some(parent) = p.parent() {
-                        sx.send(Msg::Dir(parent));
+                        sx.send(Msg::Dir(parent)).unwrap();
                     }
                     let file = p.open().unwrap();
                     Msg::File(p, file)
@@ -101,21 +101,21 @@ where
                 Err(_) => return,
             };
 
-            match &mut msg {
+            let ret = match &mut msg {
                 Msg::Dir(path) => {
                     let path = dest.path(&path.to_string());
                     if path.exists() {
                         continue;
                     }
-                    path.mkdir();
+                    path.mkdir()
                 }
                 Msg::File(path, reader) => {
                     let path = dest.path(&path.to_string());
                     let mut file = path.create().unwrap();
-                    io::copy(reader, &mut file).map(|_| ());
+                    io::copy(reader, &mut file).map(|_| ())
                 }
-                Msg::Err(e) => println!("copy error {}", e),
-            }
+            };
+            if ret.is_err() {}
         });
     })
     .unwrap();
