@@ -23,7 +23,7 @@ pub trait BPath: Debug + Send + Sync {
     fn extension(&self) -> Option<String>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BPath>;
+    fn resolve(&self, path: &str) -> Box<dyn BPath>;
 
     /// Get the parent path
     fn parent(&self) -> Option<Box<dyn BPath>>;
@@ -47,7 +47,7 @@ pub trait BReadPath: Debug + Send + Sync {
     fn extension(&self) -> Option<String>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BReadPath>;
+    fn resolve(&self, path: &str) -> Box<dyn BReadPath>;
 
     /// Get the parent path
     fn parent(&self) -> Option<Box<dyn BReadPath>>;
@@ -75,7 +75,7 @@ pub trait BWritePath: Debug + Send + Sync {
     fn extension(&self) -> Option<String>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BWritePath>;
+    fn resolve(&self, path: &str) -> Box<dyn BWritePath>;
 
     /// Get the parent path
     fn parent(&self) -> Option<Box<dyn BWritePath>>;
@@ -120,7 +120,7 @@ where
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BPath> {
+    fn resolve(&self, path: &str) -> Box<dyn BPath> {
         let ret = self.inner.resolve(path);
         Box::new(BPathWrapper { inner: ret })
     }
@@ -171,7 +171,7 @@ where
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BReadPath> {
+    fn resolve(&self, path: &str) -> Box<dyn BReadPath> {
         let ret = self.inner.resolve(path);
         Box::new(BPathWrapper { inner: ret })
     }
@@ -237,7 +237,7 @@ where
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BWritePath> {
+    fn resolve(&self, path: &str) -> Box<dyn BWritePath> {
         let ret = self.inner.resolve(path);
         Box::new(BPathWrapper { inner: ret })
     }
@@ -483,7 +483,7 @@ impl VPath for Box<dyn BPath> {
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BPath> {
+    fn resolve(&self, path: &str) -> Box<dyn BPath> {
         self.as_ref().resolve(path)
     }
 
@@ -524,7 +524,7 @@ impl VPath for Box<dyn BReadPath> {
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BReadPath> {
+    fn resolve(&self, path: &str) -> Box<dyn BReadPath> {
         self.as_ref().resolve(path)
     }
 
@@ -578,7 +578,7 @@ impl VPath for Box<dyn BWritePath> {
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Box<dyn BWritePath> {
+    fn resolve(&self, path: &str) -> Box<dyn BWritePath> {
         self.as_ref().resolve(path)
     }
 

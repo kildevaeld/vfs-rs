@@ -342,7 +342,7 @@ impl VPath for MemoryPath {
         }
     }
 
-    fn resolve(&self, path: &String) -> MemoryPath {
+    fn resolve(&self, path: &str) -> MemoryPath {
         let mut new_path = self.path.clone();
         if !new_path.ends_with('/') {
             new_path.push_str("/");
@@ -366,7 +366,6 @@ impl VPath for MemoryPath {
     fn to_path_buf(&self) -> Option<PathBuf> {
         None
     }
-
 }
 
 impl ReadPath for MemoryPath {

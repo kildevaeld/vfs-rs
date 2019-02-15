@@ -6,7 +6,6 @@ use vfs::prelude::*;
 
 fn main() {
     let pwd = env::current_dir().unwrap();
-
     let fs = PhysicalFS::new(&pwd).unwrap();
     let path = fs.path("");
 

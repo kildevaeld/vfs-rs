@@ -119,7 +119,7 @@ impl VPath for PhysicalPath {
         }
     }
 
-    fn resolve(&self, path: &String) -> Self {
+    fn resolve(&self, path: &str) -> Self {
         let full_path = pathutils::join(self.root.as_path(), path).unwrap();
         let path = full_path
             .to_str()

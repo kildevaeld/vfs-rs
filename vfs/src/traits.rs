@@ -17,7 +17,7 @@ pub trait VPath: Debug + Sized + Sync + Send + Clone {
     fn extension(&self) -> Option<String>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Self;
+    fn resolve(&self, path: &str) -> Self;
 
     /// Get the parent path
     fn parent(&self) -> Option<Self>;

@@ -109,7 +109,7 @@ where
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &String) -> Self {
+    fn resolve(&self, path: &str) -> Self {
         let p1 = self.inner.s.resolve(&path);
         let p2 = self.inner.p.resolve(&path);
         MergePath::new(Multi { s: p1, p: p2 })
