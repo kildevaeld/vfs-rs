@@ -54,12 +54,12 @@ impl VFS for PhysicalFS {
         } else if path == ".." {
             panic!("invalid path");
         }
-        let fp = pathutils::join(self.root.as_path(), &path).unwrap();
+        let fp = pathutils::resolve(&self.root.to_string_lossy(), &path).unwrap();
         if path.chars().nth(0).unwrap() == '/' {
             return PhysicalPath {
                 root: self.root.clone(),
                 path: path.to_string(),
-                full_path: fp,
+                full_path: PathBuf::from(fp),
             };
         }
         let path = format!("/{}", path);
@@ -67,7 +67,7 @@ impl VFS for PhysicalFS {
         PhysicalPath {
             root: self.root.clone(),
             path: path,
-            full_path: fp,
+            full_path: PathBuf::from(fp),
         }
     }
 }
@@ -95,8 +95,11 @@ impl VPath for PhysicalPath {
                 Some(PhysicalPath {
                     root: self.root.clone(),
                     path: replaced.to_string(),
-                    full_path: match pathutils::join(self.root.as_path(), &replaced) {
-                        Ok(m) => m,
+                    full_path: match pathutils::resolve(
+                        self.root.to_string_lossy().as_ref(),
+                        &replaced,
+                    ) {
+                        Ok(m) => PathBuf::from(m),
                         Err(_) => return None,
                     },
                 })
@@ -120,15 +123,13 @@ impl VPath for PhysicalPath {
     }
 
     fn resolve(&self, path: &str) -> Self {
-        let full_path = pathutils::join(self.root.as_path(), path).unwrap();
-        let path = full_path
-            .to_str()
-            .unwrap()
-            .replace(self.root.to_str().unwrap(), "");
+        let full_path =
+            pathutils::resolve(self.root.as_path().to_string_lossy().as_ref(), path).unwrap();
+        let path = full_path.replace(self.root.to_str().unwrap(), "");
         return PhysicalPath {
             path: path,
             root: self.root.clone(),
-            full_path: full_path,
+            full_path: PathBuf::from(full_path),
         };
     }
 
