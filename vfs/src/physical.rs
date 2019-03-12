@@ -124,8 +124,17 @@ impl VPath for PhysicalPath {
 
     fn resolve(&self, path: &str) -> Self {
         let full_path =
-            pathutils::resolve(self.full_path.as_path().to_string_lossy().as_ref(), path).unwrap();
-        let path = full_path.replace(self.root.to_str().unwrap(), "");
+            match pathutils::resolve(self.full_path.as_path().to_string_lossy().as_ref(), path) {
+                Ok(s) => s,
+                Err(_) => unimplemented!("resolve parent"),
+            };
+
+        let path = if self.root.as_path() == Path::new("/") {
+            full_path.trim_start_matches("/").to_string()
+        } else {
+            full_path.replace(self.root.to_str().unwrap(), "")
+        };
+
         return PhysicalPath {
             path: path,
             root: self.root.clone(),
