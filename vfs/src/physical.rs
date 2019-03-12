@@ -124,7 +124,7 @@ impl VPath for PhysicalPath {
 
     fn resolve(&self, path: &str) -> Self {
         let full_path =
-            pathutils::resolve(self.root.as_path().to_string_lossy().as_ref(), path).unwrap();
+            pathutils::resolve(self.full_path.as_path().to_string_lossy().as_ref(), path).unwrap();
         let path = full_path.replace(self.root.to_str().unwrap(), "");
         return PhysicalPath {
             path: path,
@@ -284,6 +284,17 @@ mod tests {
         let src = vfs.path("./src/lib.rs");
         assert_eq!(src.file_name(), Some("lib.rs".to_owned()));
         assert_eq!(src.extension(), Some("rs".to_owned()));
+    }
+
+    #[test]
+    fn resolve() {
+        let vfs = PhysicalFS::new(".").unwrap();
+        let src = vfs.path("./src/test");
+        let rel = src.resolve("../");
+        assert_eq!(rel.to_string().as_ref(), "/src/");
+
+        let rel = src.resolve("../../");
+        assert_eq!(rel.to_string().as_ref(), "/");
     }
 
     // #[test]
