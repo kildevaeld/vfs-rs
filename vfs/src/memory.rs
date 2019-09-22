@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use std::cmp;
 
-use super::{OpenOptions, ReadPath, VMetadata, VPath, WritePath, VFS};
+use super::{OpenOptions, VMetadata, VPath, VFS, VFile};
 
 pub type Filename = String;
 
@@ -128,6 +128,8 @@ impl Write for MemoryFile {
         Ok(())
     }
 }
+
+impl VFile for MemoryFile {}
 
 impl Seek for MemoryFile {
     fn seek(&mut self, style: SeekFrom) -> Result<u64> {
@@ -319,6 +321,9 @@ impl MemoryPath {
 
 impl VPath for MemoryPath {
     type Metadata = MemoryMetadata;
+    type File = MemoryFile;
+    type Iterator = <Vec<Result<MemoryPath>> as IntoIterator>::IntoIter;
+
 
     fn parent(&self) -> Option<MemoryPath> {
         self.parent_internal()
@@ -331,12 +336,13 @@ impl VPath for MemoryPath {
     fn extension(&self) -> Option<String> {
         match self.file_name() {
             Some(name) => {
-                let v: Vec<&str> = name.rsplitn(2, '.').collect();
-                if v.len() == 2 {
-                    Some(v.get(0).unwrap().to_owned().to_owned())
-                } else {
-                    None
-                }
+                // let v: Vec<&str> = name.rsplitn(2, '.').collect();
+                // if v.len() == 2 {
+                //     Some(v.get(0).unwrap().to_owned().to_owned())
+                // } else {
+                //     None
+                // }
+                pathutils::extname(name)
             }
             None => None,
         }
@@ -366,14 +372,9 @@ impl VPath for MemoryPath {
     fn to_path_buf(&self) -> Option<PathBuf> {
         None
     }
-}
 
-impl ReadPath for MemoryPath {
-    type Read = MemoryFile;
-    type Iterator = <Vec<Result<MemoryPath>> as IntoIterator>::IntoIter;
-
-    fn open(&self) -> Result<Self::Read> {
-        self.open_with_options(OpenOptions::new().read(true))
+    fn open(&self, options: OpenOptions) -> Result<Self::File> {
+        self.open_with_options(&options)
     }
 
     fn read_dir(&self) -> Result<Self::Iterator> {
@@ -387,17 +388,13 @@ impl ReadPath for MemoryPath {
         })?;
         return Ok(children.into_iter());
     }
-}
 
-impl WritePath for MemoryPath {
-    type Write = MemoryFile;
-
-    fn create(&self) -> Result<Self::Write> {
-        self.open_with_options(OpenOptions::new().write(true).create(true).truncate(true))
-    }
-    fn append(&self) -> Result<Self::Write> {
-        self.open_with_options(OpenOptions::new().write(true).create(true).append(true))
-    }
+    // fn create(&self) -> Result<Self::File> {
+    //     self.open_with_options(OpenOptions::new().write(true).create(true).truncate(true))
+    // }
+    // fn append(&self) -> Result<Self::File> {
+    //     self.open_with_options(OpenOptions::new().write(true).create(true).append(true))
+    // }
 
     fn mkdir(&self) -> Result<()> {
         let root = &mut self.fs.write().unwrap().root;
@@ -428,6 +425,67 @@ impl WritePath for MemoryPath {
         self.rm()
     }
 }
+
+// impl ReadPath for MemoryPath {
+//     type Read = MemoryFile;
+//     type Iterator = <Vec<Result<MemoryPath>> as IntoIterator>::IntoIter;
+
+//     fn open(&self) -> Result<Self::Read> {
+//         self.open_with_options(OpenOptions::new().read(true))
+//     }
+
+//     fn read_dir(&self) -> Result<Self::Iterator> {
+//         let children = self.with_node(|node| {
+//             let children: Vec<_> = node
+//                 .children
+//                 .keys()
+//                 .map(|name| Ok(MemoryPath::new(&self.fs, self.path.clone() + "/" + name)))
+//                 .collect();
+//             return children;
+//         })?;
+//         return Ok(children.into_iter());
+//     }
+// }
+
+// impl WritePath for MemoryPath {
+//     type Write = MemoryFile;
+
+//     fn create(&self) -> Result<Self::Write> {
+//         self.open_with_options(OpenOptions::new().write(true).create(true).truncate(true))
+//     }
+//     fn append(&self) -> Result<Self::Write> {
+//         self.open_with_options(OpenOptions::new().write(true).create(true).append(true))
+//     }
+
+//     fn mkdir(&self) -> Result<()> {
+//         let root = &mut self.fs.write().unwrap().root;
+//         let mut components: Vec<&str> = self.path.split("/").collect();
+//         components.reverse();
+//         components.pop();
+//         traverse_mkdir(root, &mut components)
+//     }
+
+//     fn rm(&self) -> Result<()> {
+//         let parent_path = match self.parent_internal() {
+//             None => {
+//                 return Err(Error::new(
+//                     ErrorKind::Other,
+//                     format!("File is not a file: {:?}", self.file_name()),
+//                 ));
+//             }
+//             Some(parent) => parent,
+//         };
+//         parent_path.with_node(|node| {
+//             let file_name = self.file_name().unwrap();
+//             node.children.remove(&file_name);
+//         })?;
+//         Ok(())
+//     }
+
+//     fn rm_all(&self) -> Result<()> {
+//         self.rm()
+//     }
+// }
 
 impl<'a> From<&'a MemoryPath> for String {
     fn from(path: &'a MemoryPath) -> String {
@@ -477,7 +535,7 @@ mod tests {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
         path.create().unwrap();
-        let mut file = path.open().unwrap();
+        let mut file = path.open(OpenOptions::new().read(true)).unwrap();
         let mut string: String = "".to_owned();
         file.read_to_string(&mut string).unwrap();
         assert_eq!(string, "");
@@ -520,7 +578,7 @@ mod tests {
         path.mkdir().unwrap();
         assert!(path.create().is_err(), "Directory should not be openable");
         assert!(path.append().is_err(), "Directory should not be openable");
-        assert!(path.open().is_err(), "Directory should not be openable");
+        assert!(path.open(OpenOptions::new().read(true)).is_err(), "Directory should not be openable");
     }
 
     #[test]
@@ -533,24 +591,24 @@ mod tests {
             write!(file, "!").unwrap();
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hello world!");
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             file.seek(SeekFrom::Start(1)).unwrap();
             write!(file, "a").unwrap();
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hallo world!");
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.seek(SeekFrom::End(-1)).unwrap();
             file.read_to_string(&mut string).unwrap();
@@ -560,7 +618,7 @@ mod tests {
             let _file = path.create().unwrap();
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "");
@@ -577,7 +635,7 @@ mod tests {
             write!(file, " world").unwrap();
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hello world");
@@ -587,7 +645,7 @@ mod tests {
             write!(file, "!").unwrap();
         }
         {
-            let mut file = path.open().unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hello world!");
@@ -641,7 +699,7 @@ mod tests {
         let fs = MemoryFS::new();
         let path = fs.path("/foo/bar.txt");
         assert_eq!(path.file_name(), Some("bar.txt".to_owned()));
-        assert_eq!(path.extension(), Some("txt".to_owned()));
+        assert_eq!(path.extension(), Some(".txt".to_owned()));
         assert_eq!(path.parent().unwrap().extension(), None);
     }
 

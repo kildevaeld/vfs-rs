@@ -1,4 +1,4 @@
-use super::traits::{ReadPath, VPath};
+use super::traits::{VPath};
 use super::utils::WalkDirIter;
 use globset::{Candidate, Glob, GlobMatcher, GlobSet, GlobSetBuilder};
 
@@ -52,7 +52,7 @@ where
 
 impl<P> Iterator for GlobWalkDirIter<P>
 where
-    P: ReadPath,
+    P: VPath,
 {
     type Item = P;
     fn next(&mut self) -> Option<P> {

@@ -7,21 +7,21 @@ use std::path::PathBuf;
 
 pub trait Overlay: VFS + Sized
 where
-    <Self as VFS>::Path: ReadPath,
+    <Self as VFS>::Path: VPath,
 {
     fn merge<T: VFS>(self, overlay: T) -> Merge<Self, T>
     where
-        <T as VFS>::Path: ReadPath;
+        <T as VFS>::Path: VPath;
 }
 
 impl<T> Overlay for T
 where
     T: VFS,
-    <Self as VFS>::Path: ReadPath,
+    <Self as VFS>::Path: VPath,
 {
     fn merge<O: VFS>(self, overlay: O) -> Merge<Self, O>
     where
-        <O as VFS>::Path: ReadPath,
+        <O as VFS>::Path: VPath,
     {
         Merge::new(self, overlay)
     }
@@ -92,6 +92,8 @@ where
     P: VPath,
 {
     type Metadata = MergeMetadata<S, P>;
+    type File = MergeFile<S::File, P::File>;
+    type Iterator = MergeIterator<S, P>;
 
     fn file_name(&self) -> Option<String> {
         match self.inner.p.file_name() {
@@ -163,35 +165,18 @@ where
         }
         self.inner.s.to_path_buf()
     }
-}
 
-impl<S, P> fmt::Debug for MergePath<S, P>
-where
-    S: VPath,
-    P: VPath,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        <fmt::Debug>::fmt(&self.inner.s, f)?;
-        <fmt::Debug>::fmt(&self.inner.p, f)
-    }
-}
-
-impl<S, P> ReadPath for MergePath<S, P>
-where
-    S: ReadPath,
-    P: ReadPath,
-{
-    type Read = MergeFile<S::Read, P::Read>;
-    type Iterator = MergeIterator<S, P>;
-
-    fn open(&self) -> Result<Self::Read> {
+    fn open(&self, o: OpenOptions) -> Result<Self::File> {
+        if o.append || o.create || o.truncate {
+            return Err(ErrorKind::PermissionDenied.into());
+        } 
         if self.inner.p.exists() {
-            self.inner.p.open().map(|m| MergeFile {
-                inner: OneOf::<S::Read, P::Read>::Second(m),
+            self.inner.p.open(o).map(|m| MergeFile {
+                inner: OneOf::<S::File, P::File>::Second(m),
             })
         } else {
-            self.inner.s.open().map(|m| MergeFile {
-                inner: OneOf::<S::Read, P::Read>::First(m),
+            self.inner.s.open(o).map(|m| MergeFile {
+                inner: OneOf::<S::File, P::File>::First(m),
             })
         }
     }
@@ -216,7 +201,79 @@ where
             seen: HashSet::new(),
         })
     }
+
+    // fn create(&self) -> Result<Self::File> {
+    //     Err(ErrorKind::PermissionDenied.into())
+    // }
+    // fn append(&self) -> Result<Self::File> {
+    //     Err(ErrorKind::PermissionDenied.into())
+    // }
+    /// Create a directory at the location by this path
+    fn mkdir(&self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
+    /// Remove a file
+    fn rm(&self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
+    /// Remove a file or directory and all its contents
+    fn rm_all(&self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
 }
+
+impl<S, P> fmt::Debug for MergePath<S, P>
+where
+    S: VPath,
+    P: VPath,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        <fmt::Debug>::fmt(&self.inner.s, f)?;
+        <fmt::Debug>::fmt(&self.inner.p, f)
+    }
+}
+
+// impl<S, P> VPath for MergePath<S, P>
+// where
+//     S: VPath,
+//     P: VPath,
+// {
+//     type Read = MergeFile<S::Read, P::Read>;
+//     type Iterator = MergeIterator<S, P>;
+
+//     fn open(&self) -> Result<Self::Read> {
+//         if self.inner.p.exists() {
+//             self.inner.p.open().map(|m| MergeFile {
+//                 inner: OneOf::<S::Read, P::Read>::Second(m),
+//             })
+//         } else {
+//             self.inner.s.open().map(|m| MergeFile {
+//                 inner: OneOf::<S::Read, P::Read>::First(m),
+//             })
+//         }
+//     }
+
+//     fn read_dir(&self) -> Result<Self::Iterator> {
+//         let i1 = self.inner.s.read_dir();
+//         let i2 = self.inner.p.read_dir();
+//         if i1.is_err() && i2.is_err() {
+//             return Err(Error::from(ErrorKind::NotFound));
+//         }
+//         Ok(MergeIterator {
+//             s: self.inner.s.clone(),
+//             si: match i1 {
+//                 Ok(m) => Some(m),
+//                 Err(_) => None,
+//             },
+//             p: self.inner.p.clone(),
+//             pi: match i2 {
+//                 Ok(m) => Some(m),
+//                 Err(_) => None,
+//             },
+//             seen: HashSet::new(),
+//         })
+//     }
+// }
 
 pub struct MergeFile<S, P> {
     inner: OneOf<S, P>,
@@ -236,10 +293,28 @@ where
     }
 }
 
+impl<S,P> std::io::Write for MergeFile<S, P> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
+}
+
+impl<S, P> VFile for MergeFile<S, P> 
+where
+    S: Read,
+    P: Read,
+{
+
+} 
+
 pub struct MergeIterator<S, P>
 where
-    S: ReadPath,
-    P: ReadPath,
+    S: VPath,
+    P: VPath,
 {
     s: S,
     si: Option<S::Iterator>,
@@ -250,8 +325,8 @@ where
 
 impl<S, P> Iterator for MergeIterator<S, P>
 where
-    S: ReadPath,
-    P: ReadPath,
+    S: VPath,
+    P: VPath,
 {
     type Item = Result<MergePath<S, P>>;
     fn next(&mut self) -> Option<Self::Item> {

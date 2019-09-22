@@ -3,13 +3,17 @@ use std::fmt::Debug;
 use std::io::{Read, Result, Write};
 use std::path::PathBuf;
 
+pub trait VFile: Read + Write {}
+
 pub trait VFS: Sync + Send {
     type Path: VPath;
     fn path(&self, path: &str) -> Self::Path;
 }
 
-pub trait VPath: Debug + Sized + Sync + Send + Clone {
+pub trait VPath: Debug + Sync + Send + Clone {
     type Metadata: VMetadata;
+    type File: VFile + Send;
+    type Iterator: Iterator<Item = Result<Self>>;
 
     fn file_name(&self) -> Option<String>;
 
@@ -31,28 +35,50 @@ pub trait VPath: Debug + Sized + Sync + Send + Clone {
     fn to_string(&self) -> Cow<str>;
 
     fn to_path_buf(&self) -> Option<PathBuf>;
-}
 
-pub trait ReadPath: VPath {
-    type Read: Read + Send;
-    type Iterator: Iterator<Item = Result<Self>>;
-
-    fn open(&self) -> Result<Self::Read>;
+    fn open(&self, options: OpenOptions) -> Result<Self::File>;
     fn read_dir(&self) -> Result<Self::Iterator>;
-}
 
-pub trait WritePath: ReadPath {
-    type Write: Write + Read + Send;
+    // fn create(&self) -> Result<Self::File>;
+    // fn append(&self) -> Result<Self::File>;
 
-    fn create(&self) -> Result<Self::Write>;
-    fn append(&self) -> Result<Self::Write>;
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()>;
     /// Remove a file
     fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
     fn rm_all(&self) -> Result<()>;
+
+    fn create(&self) -> Result<Self::File> {
+        self.open(OpenOptions::new().write(true).create(true).truncate(true))
+    }
+    fn append(&self) -> Result<Self::File> {
+        self.open(OpenOptions::new().write(true).create(true).append(true))
+    }
+
+
 }
+
+// pub trait ReadPath: VPath {
+//     type Read: Read + Send;
+//     type Iterator: Iterator<Item = Result<Self>>;
+
+//     fn open(&self) -> Result<Self::Read>;
+//     fn read_dir(&self) -> Result<Self::Iterator>;
+// }
+
+// pub trait WritePath: ReadPath {
+//     type Write: Write + Read + Send;
+
+//     fn create(&self) -> Result<Self::Write>;
+//     fn append(&self) -> Result<Self::Write>;
+//     /// Create a directory at the location by this path
+//     fn mkdir(&self) -> Result<()>;
+//     /// Remove a file
+//     fn rm(&self) -> Result<()>;
+//     /// Remove a file or directory and all its contents
+//     fn rm_all(&self) -> Result<()>;
+// }
 
 pub trait VMetadata {
     fn is_dir(&self) -> bool;
@@ -78,31 +104,31 @@ impl OpenOptions {
     }
 
     /// Open for reading
-    pub fn read(&mut self, read: bool) -> &mut OpenOptions {
+    pub fn read(mut self, read: bool) -> Self {
         self.read = read;
         self
     }
 
     /// Open for writing
-    pub fn write(&mut self, write: bool) -> &mut OpenOptions {
+    pub fn write(mut self, write: bool) -> Self {
         self.write = write;
         self
     }
 
     /// Create the file if it does not exist yet
-    pub fn create(&mut self, create: bool) -> &mut OpenOptions {
+    pub fn create(mut self, create: bool) -> Self {
         self.create = create;
         self
     }
 
     /// Append at the end of the file
-    pub fn append(&mut self, append: bool) -> &mut OpenOptions {
+    pub fn append(mut self, append: bool) -> Self {
         self.append = append;
         self
     }
 
     /// Truncate the file to 0 bytes after opening
-    pub fn truncate(&mut self, truncate: bool) -> &mut OpenOptions {
+    pub fn truncate(mut self, truncate: bool) -> Self {
         self.truncate = truncate;
         self
     }

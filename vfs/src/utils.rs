@@ -1,13 +1,13 @@
 #[cfg(feature = "glob")]
 use super::glob::GlobWalkDirIter;
-use super::traits::{ReadPath, VMetadata, VPath, WritePath, VFS};
+use super::traits::{ VMetadata, VPath, VFS, OpenOptions};
 use crossbeam;
 use crossbeam::channel::bounded;
 use std::io;
 
-impl<T: ?Sized> ReadPathExt for T where T: ReadPath {}
+impl<T: ?Sized> VPathExt for T where T: VPath {}
 
-pub trait ReadPathExt: ReadPath {
+pub trait VPathExt: VPath + Sized {
     fn walk_dir(&self) -> WalkDirIter<Self> {
         WalkDirIter::new(self.clone())
     }
@@ -29,7 +29,7 @@ fn noop<P: VPath>(path: &P) -> bool {
 
 pub struct WalkDirIter<P> {
     todo: Vec<P>,
-    f: Box<(Fn(&P) -> bool) + Send>,
+    f: Box<dyn (Fn(&P) -> bool) + Send>,
 }
 
 impl<P> WalkDirIter<P> {
@@ -50,7 +50,7 @@ impl<P> WalkDirIter<P> {
 
 impl<P> Iterator for WalkDirIter<P>
 where
-    P: ReadPath,
+    P: VPath,
 {
     type Item = P;
     // TODO: handle loops
@@ -82,9 +82,9 @@ enum Msg<P, F> {
 pub fn copy<S, P, D: ?Sized>(source: S, dest: &D)
 where
     S: Iterator<Item = P> + Send,
-    P: ReadPath,
+    P: VPath,
     D: VFS + Send + Sync,
-    <D as VFS>::Path: WritePath,
+    // <D as VFS>::Path: VPath,
 {
     crossbeam::scope(|scope| {
         let (sx, rx) = bounded(10);
@@ -101,7 +101,7 @@ where
                     if let Some(parent) = p.parent() {
                         sx.send(Msg::Dir(parent)).unwrap();
                     }
-                    let file = p.open().unwrap();
+                    let file = p.open(OpenOptions::new().read(true)).unwrap();
                     Msg::File(p, file)
                 } else {
                     continue;
@@ -126,7 +126,7 @@ where
                 }
                 Msg::File(path, reader) => {
                     let path = dest.path(&path.to_string());
-                    let mut file = path.create().unwrap();
+                    let mut file = path.open(OpenOptions::new().create(true)).unwrap();
                     io::copy(reader, &mut file).map(|_| ())
                 }
             };

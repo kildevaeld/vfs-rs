@@ -1,5 +1,5 @@
 use std::env;
-use vfs::boxed::read_box;
+use vfs::boxed::vfs_box;
 use vfs::memory::*;
 use vfs::physical::*;
 use vfs::prelude::*;
@@ -21,8 +21,8 @@ fn main() {
         println!("dest {:?}", li.to_string());
     }
 
-    let b = read_box(fs);
+    let b = vfs_box(fs);
     for bb in b.path("").glob_walk("**/*.rs") {
-        println!("found {}", bb.to_string());
+        println!("found {:?}", bb);
     }
 }

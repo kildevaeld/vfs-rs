@@ -1,4 +1,5 @@
-use super::traits::{ReadPath, VMetadata, VPath, WritePath, VFS};
+use super::traits::{VPath, VMetadata, VFS, VFile, OpenOptions
+};
 use pathutils;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
@@ -9,6 +10,9 @@ use std::fs::{
 use std::io::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+
+impl VFile for std::fs::File {}
 
 /// A "physical" file system implementation using the underlying OS file system
 pub struct PhysicalFS {
@@ -81,6 +85,8 @@ pub struct PhysicalPath {
 
 impl VPath for PhysicalPath {
     type Metadata = Metadata;
+    type File = File;
+    type Iterator = PhysicalReadDir;
 
     fn parent(&self) -> Option<Self> {
         match self.full_path.parent() {
@@ -157,23 +163,10 @@ impl VPath for PhysicalPath {
     fn to_string(&self) -> Cow<str> {
         Cow::from(&self.path)
     }
-}
 
-impl Debug for PhysicalPath {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "PhysicalPath<Root={:?}, Path={:?}, FullPath={:?}>",
-            self.root, self.path, self.full_path
-        )
-    }
-}
-
-impl ReadPath for PhysicalPath {
-    type Read = File;
-    type Iterator = PhysicalReadDir;
-    fn open(&self) -> Result<File> {
-        File::open(&self.full_path)
+    fn open(&self, o: OpenOptions) -> Result<File> {
+        FSOpenOptions::new().write(o.write).create(o.create).read(o.read).append(o.append).truncate(o.truncate).open(&self.full_path)
+      
     }
 
     fn read_dir(&self) -> Result<PhysicalReadDir> {
@@ -182,20 +175,18 @@ impl ReadPath for PhysicalPath {
             root: self.root.clone(),
         })
     }
-}
 
-impl WritePath for PhysicalPath {
-    type Write = File;
-    fn create(&self) -> Result<File> {
-        File::create(&self.full_path)
-    }
 
-    fn append(&self) -> Result<File> {
-        FSOpenOptions::new()
-            .write(true)
-            .append(true)
-            .open(&self.full_path)
-    }
+    // fn create(&self, options: OpenOptions) -> Result<File> {
+    //     File::create(&self.full_path)
+    // }
+
+    // fn append(&self) -> Result<File> {
+    //     FSOpenOptions::new()
+    //         .write(true)
+    //         .append(true)
+    //         .open(&self.full_path)
+    // }
 
     fn mkdir(&self) -> Result<()> {
         DirBuilder::new().recursive(true).create(&self.full_path)
@@ -216,7 +207,68 @@ impl WritePath for PhysicalPath {
             remove_file(&self.full_path)
         }
     }
+
+
 }
+
+impl Debug for PhysicalPath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "PhysicalPath<Root={:?}, Path={:?}, FullPath={:?}>",
+            self.root, self.path, self.full_path
+        )
+    }
+}
+
+// impl ReadPath for PhysicalPath {
+//     type Read = File;
+//     type Iterator = PhysicalReadDir;
+//     fn open(&self) -> Result<File> {
+//         File::open(&self.full_path)
+//     }
+
+//     fn read_dir(&self) -> Result<PhysicalReadDir> {
+//         self.full_path.read_dir().map(|inner| PhysicalReadDir {
+//             inner: inner,
+//             root: self.root.clone(),
+//         })
+//     }
+// }
+
+// impl WritePath for PhysicalPath {
+//     type Write = File;
+//     fn create(&self) -> Result<File> {
+//         File::create(&self.full_path)
+//     }
+
+//     fn append(&self) -> Result<File> {
+//         FSOpenOptions::new()
+//             .write(true)
+//             .append(true)
+//             .open(&self.full_path)
+//     }
+
+//     fn mkdir(&self) -> Result<()> {
+//         DirBuilder::new().recursive(true).create(&self.full_path)
+//     }
+
+//     fn rm(&self) -> Result<()> {
+//         if self.full_path.is_dir() {
+//             remove_dir(&self.full_path)
+//         } else {
+//             remove_file(&self.full_path)
+//         }
+//     }
+
+//     fn rm_all(&self) -> Result<()> {
+//         if self.full_path.is_dir() {
+//             remove_dir_all(&self.full_path)
+//         } else {
+//             remove_file(&self.full_path)
+//         }
+//     }
+// }
 
 pub struct PhysicalReadDir {
     inner: ReadDir,
@@ -249,13 +301,13 @@ mod tests {
     use std::io::{Read, Result};
     use std::path::PathBuf;
 
-    use super::VPath;
+    use super::{VPath, OpenOptions};
     use super::*;
     #[test]
     fn read_file() {
         let vfs = PhysicalFS::new(".").unwrap();
         let path = vfs.path("Cargo.toml");
-        let mut file = path.open().unwrap();
+        let mut file = path.open(OpenOptions::new().read(true)).unwrap();
         let mut string: String = "".to_owned();
         file.read_to_string(&mut string).unwrap();
         assert!(string.len() > 10);
@@ -292,7 +344,7 @@ mod tests {
         let vfs = PhysicalFS::new(".").unwrap();
         let src = vfs.path("./src/lib.rs");
         assert_eq!(src.file_name(), Some("lib.rs".to_owned()));
-        assert_eq!(src.extension(), Some("rs".to_owned()));
+        assert_eq!(src.extension(), Some(".rs".to_owned()));
     }
 
     #[test]
