@@ -43,17 +43,21 @@ where
     S: VFS,
     P: VFS,
 {
-    type Path = MergePath<S::Path, P::Path>;
+    type Path = OneOrTwo<S::Path, P::Path>;
 
     fn path(&self, path: &str) -> Self::Path {
-        MergePath::new(Multi {
-            s: self.s.path(&path),
-            p: self.p.path(&path),
-        })
+        // let p = self.p.path(path);
+        // if !p.exists() && self.s.path(path).exists() {
+        //     OneOf::First(self.s.path(path))
+        // } else {
+        //     OneOf::Second(p)
+        // }
+        OneOrTwo::Two(self.s.path(path), self.p.path(path))
     }
 }
 
-pub(super) enum OneOf<S, P> {
+#[derive(Debug)]
+pub enum OneOf<S, P> {
     First(S),
     Second(P),
     // None,
@@ -69,145 +73,141 @@ impl<S: Clone, P: Clone> Clone for OneOf<S, P> {
     }
 }
 
-#[derive(Clone)]
-pub(super) struct Multi<S: Clone, P: Clone> {
-    s: S,
-    p: P,
-}
-
-#[derive(Clone)]
-pub struct MergePath<S: Clone, P: Clone> {
-    inner: Multi<S, P>,
-}
-
-impl<S: Clone, P: Clone> MergePath<S, P> {
-    pub(super) fn new(one: Multi<S, P>) -> MergePath<S, P> {
-        MergePath { inner: one }
+impl<S, P> VMetadata for OneOf<S, P>
+where
+    S: VMetadata,
+    P: VMetadata,
+{
+    fn is_dir(&self) -> bool {
+        match self {
+            OneOf::First(m) => m.is_dir(),
+            OneOf::Second(m) => m.is_dir(),
+            // OneOf::None => false,
+        }
+    }
+    /// Returns true iff this path is a file
+    fn is_file(&self) -> bool {
+        match self {
+            OneOf::First(m) => m.is_file(),
+            OneOf::Second(m) => m.is_file(),
+            // OneOf::None => false,
+        }
+    }
+    /// Returns the length of the file at this path
+    fn len(&self) -> u64 {
+        match self {
+            OneOf::First(m) => m.len(),
+            OneOf::Second(m) => m.len(),
+            // OneOf::None => 0,
+        }
     }
 }
 
-impl<S, P> VPath for MergePath<S, P>
+#[derive(Clone, Debug)]
+pub enum OneOrTwo<S, P> {
+    One(OneOf<S, P>),
+    Two(S, P),
+}
+
+impl<S, P> VPath for OneOf<S, P>
 where
     S: VPath,
     P: VPath,
 {
-    type Metadata = MergeMetadata<S, P>;
+    type Metadata = OneOf<S::Metadata, P::Metadata>;
     type File = MergeFile<S::File, P::File>;
-    type Iterator = MergeIterator<S, P>;
+    type Iterator = OneOfIterator<S, P>;
 
     fn file_name(&self) -> Option<String> {
-        match self.inner.p.file_name() {
-            Some(m) => Some(m),
-            None => self.inner.s.file_name(),
+        // match self.inner.s.file_name() {
+        //     Some(m) => Some(m),
+        //     None => self.inner.s.file_name(),
+        // }
+        match self {
+            OneOf::First(s) => s.file_name(),
+            OneOf::Second(s) => s.file_name(),
         }
     }
 
     /// The extension of this filename
     fn extension(&self) -> Option<String> {
-        match self.inner.p.extension() {
-            Some(m) => Some(m),
-            None => self.inner.s.extension(),
+        // match self.inner.p.extension() {
+        //     Some(m) => Some(m),
+        //     None => self.inner.s.extension(),
+        // }
+        match self {
+            OneOf::First(s) => s.extension(),
+            OneOf::Second(s) => s.extension(),
         }
     }
 
     /// append a segment to this path
     fn resolve(&self, path: &str) -> Self {
-        let p1 = self.inner.s.resolve(&path);
-        let p2 = self.inner.p.resolve(&path);
-        MergePath::new(Multi { s: p1, p: p2 })
+        match self {
+            OneOf::First(s) => OneOf::First(s.resolve(path)),
+            OneOf::Second(s) => OneOf::Second(s.resolve(path)),
+        }
     }
 
     /// Get the parent path
     fn parent(&self) -> Option<Self> {
-        let p1 = match self.inner.s.parent() {
-            None => return None,
-            Some(m) => m,
-        };
-
-        let p2 = match self.inner.p.parent() {
-            None => return None,
-            Some(m) => m,
-        };
-
-        Some(MergePath::new(Multi { s: p1, p: p2 }))
+        match self {
+            OneOf::First(s) => s.parent().map(|m| OneOf::First(m)),
+            OneOf::Second(s) => s.parent().map(|m| OneOf::Second(m)),
+        }
     }
 
     /// Check if the file existst
     fn exists(&self) -> bool {
-        if self.inner.p.exists() {
-            return true;
+        match self {
+            OneOf::First(s) => s.exists(),
+            OneOf::Second(s) => s.exists(),
         }
-        self.inner.s.exists()
     }
 
     /// Get the file's metadata
     fn metadata(&self) -> Result<Self::Metadata> {
-        if let Ok(m) = self.inner.p.metadata() {
-            return Ok(MergeMetadata::new(
-                OneOf::<S::Metadata, P::Metadata>::Second(m),
-            ));
-        }
-        match self.inner.s.metadata() {
-            Ok(m) => Ok(MergeMetadata::new(
-                OneOf::<S::Metadata, P::Metadata>::First(m),
-            )),
-            Err(e) => Err(e),
+        match self {
+            OneOf::First(s) => s.metadata().map(|m| OneOf::First(m)),
+            OneOf::Second(s) => s.metadata().map(|m| OneOf::Second(m)),
         }
     }
 
     fn to_string(&self) -> Cow<str> {
-        self.inner.s.to_string()
+        match self {
+            OneOf::First(s) => s.to_string(),
+            OneOf::Second(s) => s.to_string(),
+        }
     }
 
     fn to_path_buf(&self) -> Option<PathBuf> {
-        if let Some(i) = self.inner.p.to_path_buf() {
-            return Some(i);
+        match self {
+            OneOf::First(s) => s.to_path_buf(),
+            OneOf::Second(s) => s.to_path_buf(),
         }
-        self.inner.s.to_path_buf()
     }
 
     fn open(&self, o: OpenOptions) -> Result<Self::File> {
         if o.append || o.create || o.truncate {
             return Err(ErrorKind::PermissionDenied.into());
-        } 
-        if self.inner.p.exists() {
-            self.inner.p.open(o).map(|m| MergeFile {
-                inner: OneOf::<S::File, P::File>::Second(m),
-            })
-        } else {
-            self.inner.s.open(o).map(|m| MergeFile {
+        }
+        match self {
+            OneOf::First(s) => s.open(o).map(|m| MergeFile {
                 inner: OneOf::<S::File, P::File>::First(m),
-            })
+            }),
+            OneOf::Second(s) => s.open(o).map(|m| MergeFile {
+                inner: OneOf::<S::File, P::File>::Second(m),
+            }),
         }
     }
 
     fn read_dir(&self) -> Result<Self::Iterator> {
-        let i1 = self.inner.s.read_dir();
-        let i2 = self.inner.p.read_dir();
-        if i1.is_err() && i2.is_err() {
-            return Err(Error::from(ErrorKind::NotFound));
+        match self {
+            OneOf::First(s) => s.read_dir().map(|m| OneOfIterator::new(OneOf::First(m))),
+            OneOf::Second(s) => s.read_dir().map(|m| OneOfIterator::new(OneOf::Second(m))),
         }
-        Ok(MergeIterator {
-            s: self.inner.s.clone(),
-            si: match i1 {
-                Ok(m) => Some(m),
-                Err(_) => None,
-            },
-            p: self.inner.p.clone(),
-            pi: match i2 {
-                Ok(m) => Some(m),
-                Err(_) => None,
-            },
-            seen: HashSet::new(),
-        })
     }
 
-    // fn create(&self) -> Result<Self::File> {
-    //     Err(ErrorKind::PermissionDenied.into())
-    // }
-    // fn append(&self) -> Result<Self::File> {
-    //     Err(ErrorKind::PermissionDenied.into())
-    // }
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()> {
         Err(ErrorKind::PermissionDenied.into())
@@ -222,58 +222,167 @@ where
     }
 }
 
-impl<S, P> fmt::Debug for MergePath<S, P>
+
+
+impl<S, P> VPath for OneOrTwo<S, P>
 where
     S: VPath,
     P: VPath,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        <fmt::Debug>::fmt(&self.inner.s, f)?;
-        <fmt::Debug>::fmt(&self.inner.p, f)
+    type Metadata = OneOf<S::Metadata, P::Metadata>;
+    type File = MergeFile<S::File, P::File>;
+    type Iterator = MergeIterator<S, P>;
+
+    fn file_name(&self) -> Option<String> {
+        match self {
+            OneOrTwo::One(s) => s.file_name(),
+            OneOrTwo::Two(s, _) => s.file_name(),
+        }
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        match self {
+            OneOrTwo::One(s) => s.extension(),
+            OneOrTwo::Two(s, _) => s.extension(),
+        }
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &str) -> Self {
+        match self {
+            OneOrTwo::One(s) => OneOrTwo::One(s.resolve(path)),
+            OneOrTwo::Two(s, p) => {
+                let r1 = p.resolve(path);
+                let r2 = s.resolve(path);
+                if r1.exists()
+                    && r2.exists()
+                    && r1.metadata().unwrap().is_dir()
+                    && r2.metadata().unwrap().is_dir()
+                {
+                    OneOrTwo::Two(r2, r1)
+                } else if r2.exists() && !r1.exists() {
+                    OneOrTwo::One(OneOf::First(r2))
+                } else {
+                    OneOrTwo::One(OneOf::Second(r1))
+                }
+            }
+        }
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Self> {
+        match self {
+            OneOrTwo::One(s) => s.parent().map(|m| OneOrTwo::One(m)),
+            // FIXME: Handle if both is a dir
+            OneOrTwo::Two(_, p) => p.parent().map(|m| OneOrTwo::One(OneOf::Second(m))),
+        }
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        match self {
+            OneOrTwo::One(s) => s.exists(),
+            OneOrTwo::Two(s, p) => s.exists() || p.exists(),
+        }
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Self::Metadata> {
+        match self {
+            OneOrTwo::One(s) => s.metadata(),
+            // FIXME: Handle if both is a dir
+            OneOrTwo::Two(s, p) => {
+                if p.exists() || !s.exists() {
+                    p.metadata().map(|m| OneOf::Second(m))
+                } else {
+                    s.metadata().map(|m| OneOf::First(m))
+                }
+            }
+        }
+    }
+
+    fn to_string(&self) -> Cow<str> {
+        match self {
+            OneOrTwo::One(s) => s.to_string(),
+            // FIXME: Handle if both is a dir
+            OneOrTwo::Two(_, p) => p.to_string(),
+        }
+    }
+
+    fn to_path_buf(&self) -> Option<PathBuf> {
+        match self {
+            OneOrTwo::One(s) => s.to_path_buf(),
+            // FIXME: Handle if both is a dir
+            OneOrTwo::Two(_, p) => p.to_path_buf(),
+        }
+    }
+
+    fn open(&self, o: OpenOptions) -> Result<Self::File> {
+        if o.append || o.create || o.truncate {
+            return Err(ErrorKind::PermissionDenied.into());
+        }
+       
+        match self {
+            OneOrTwo::One(s) => s.open(o),
+            // FIXME: Handle if both is a dir
+            OneOrTwo::Two(_, p) => p.open(o).map(|m| MergeFile {
+                inner: OneOf::Second(m),
+            }),
+        }
+    }
+
+    fn read_dir(&self) -> Result<Self::Iterator> {
+       
+        match self {
+            OneOrTwo::One(s) => match s {
+                OneOf::First(s) => s
+                    .read_dir()
+                    .map(|m| MergeIterator::new(OneOrTwo::One(OneOf::First((s.clone(), m))))),
+                OneOf::Second(s) => s
+                    .read_dir()
+                    .map(|m| MergeIterator::new(OneOrTwo::One(OneOf::Second((s.clone(), m))))),
+            },
+            OneOrTwo::Two(s, p) => {
+                let s1 = s.read_dir();
+                let s2 = p.read_dir();
+                if s1.is_err() && s2.is_err() {
+                    Ok(MergeIterator::new(OneOrTwo::Two(
+                        (s.clone(), s1.unwrap()),
+                        (p.clone(), s2.unwrap()),
+                    )))
+                } else if s1.is_ok() {
+                    Ok(MergeIterator::new(OneOrTwo::One(OneOf::First((
+                        s.clone(),
+                        s1.unwrap(),
+                    )))))
+                } else if s2.is_ok() {
+                    Ok(MergeIterator::new(OneOrTwo::One(OneOf::First((
+                        s.clone(),
+                        s1.unwrap(),
+                    )))))
+                } else {
+                    Err(s2.err().unwrap())
+                }
+            }
+        }
+    }
+
+
+    /// Create a directory at the location by this path
+    fn mkdir(&self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
+    /// Remove a file
+    fn rm(&self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
+    }
+    /// Remove a file or directory and all its contents
+    fn rm_all(&self) -> Result<()> {
+        Err(ErrorKind::PermissionDenied.into())
     }
 }
 
-// impl<S, P> VPath for MergePath<S, P>
-// where
-//     S: VPath,
-//     P: VPath,
-// {
-//     type Read = MergeFile<S::Read, P::Read>;
-//     type Iterator = MergeIterator<S, P>;
-
-//     fn open(&self) -> Result<Self::Read> {
-//         if self.inner.p.exists() {
-//             self.inner.p.open().map(|m| MergeFile {
-//                 inner: OneOf::<S::Read, P::Read>::Second(m),
-//             })
-//         } else {
-//             self.inner.s.open().map(|m| MergeFile {
-//                 inner: OneOf::<S::Read, P::Read>::First(m),
-//             })
-//         }
-//     }
-
-//     fn read_dir(&self) -> Result<Self::Iterator> {
-//         let i1 = self.inner.s.read_dir();
-//         let i2 = self.inner.p.read_dir();
-//         if i1.is_err() && i2.is_err() {
-//             return Err(Error::from(ErrorKind::NotFound));
-//         }
-//         Ok(MergeIterator {
-//             s: self.inner.s.clone(),
-//             si: match i1 {
-//                 Ok(m) => Some(m),
-//                 Err(_) => None,
-//             },
-//             p: self.inner.p.clone(),
-//             pi: match i2 {
-//                 Ok(m) => Some(m),
-//                 Err(_) => None,
-//             },
-//             seen: HashSet::new(),
-//         })
-//     }
-// }
 
 pub struct MergeFile<S, P> {
     inner: OneOf<S, P>,
@@ -293,7 +402,7 @@ where
     }
 }
 
-impl<S,P> std::io::Write for MergeFile<S, P> {
+impl<S, P> std::io::Write for MergeFile<S, P> {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         Err(ErrorKind::PermissionDenied.into())
     }
@@ -303,24 +412,43 @@ impl<S,P> std::io::Write for MergeFile<S, P> {
     }
 }
 
-impl<S, P> VFile for MergeFile<S, P> 
+impl<S, P> VFile for MergeFile<S, P>
 where
     S: Read,
     P: Read,
 {
+}
 
-} 
+#[derive(PartialEq, Debug)]
+enum MergeIteratorState {
+    First,
+    Second,
+    Done,
+}
 
+#[derive(Debug)]
 pub struct MergeIterator<S, P>
 where
     S: VPath,
     P: VPath,
 {
-    s: S,
-    si: Option<S::Iterator>,
-    p: P,
-    pi: Option<P::Iterator>,
+    inner: OneOrTwo<(S, S::Iterator), (P, P::Iterator)>,
     seen: HashSet<String>,
+    state: MergeIteratorState,
+}
+
+impl<S, P> MergeIterator<S, P>
+where
+    S: VPath,
+    P: VPath,
+{
+    pub(crate) fn new(one: OneOrTwo<(S, S::Iterator), (P, P::Iterator)>) -> MergeIterator<S, P> {
+        MergeIterator {
+            inner: one,
+            seen: HashSet::new(),
+            state: MergeIteratorState::First,
+        }
+    }
 }
 
 impl<S, P> Iterator for MergeIterator<S, P>
@@ -328,110 +456,121 @@ where
     S: VPath,
     P: VPath,
 {
-    type Item = Result<MergePath<S, P>>;
+    type Item = Result<OneOrTwo<S, P>>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pi.is_some() {
-            match self.pi.as_mut().unwrap().next() {
-                Some(m) => match m {
-                    Ok(m) => {
-                        let fl = m.to_string();
-                        let p = fl.replace(&self.p.to_string().to_string(), "");
-                        self.seen.insert(String::from(fl));
-                        return Some(Ok(MergePath::new(Multi {
-                            s: self.s.resolve(&p),
-                            p: m,
-                        })));
-                    }
-                    Err(e) => return Some(Err(e)),
-                },
-                None => {
-                    self.pi = None;
-                }
-            };
+        if self.state == MergeIteratorState::Done {
+            return None;
         }
 
-        if self.si.is_some() {
-            while self.si.is_some() {
-                let m = match self.si.as_mut().unwrap().next() {
-                    Some(m) => match m {
-                        Ok(m) => {
-                            let fl = m.to_string();
-                            let p = fl.replace(&self.s.to_string().to_string(), "");
-                            if self.seen.contains(&String::from(fl)) {
-                                None
-                            } else {
-                                Some(Ok(MergePath::new(Multi {
-                                    p: self.p.resolve(&p),
-                                    s: m,
-                                })))
+        
+        let out = match &mut self.inner {
+            OneOrTwo::One(OneOf::First((_, i))) => {
+                i.next().map(|m| m.map(|m| OneOrTwo::One(OneOf::First(m))))
+            }
+            OneOrTwo::One(OneOf::Second((_, i))) => {
+                i.next().map(|m| m.map(|m| OneOrTwo::One(OneOf::Second(m))))
+            }
+            OneOrTwo::Two(first, second) => {
+                match self.state {
+                    MergeIteratorState::First => {
+                        match second.1.next() {
+                            Some(Ok(s)) => {
+                                let fl = s.to_string();
+                                let p = fl.replace(&second.0.to_string().to_string(), "");
+                                self.seen.insert(String::from(fl));
+                                if first.0.resolve(&p).exists() {
+                                    Some(Ok(OneOrTwo::Two(first.0.resolve(&p), s)))
+                                
+                                } else {
+                                    Some(Ok(OneOrTwo::One(OneOf::Second(s))))
+                                    
+                                }
+                            }
+                            Some(Err(e)) => Some(Err(e)),
+                            None => {
+                                self.state = MergeIteratorState::Second;
+                                self.next()
+                                
                             }
                         }
-                        Err(e) => Some(Err(e)),
-                    },
-                    None => {
-                        self.si = None;
-                        None
                     }
-                };
+                    MergeIteratorState::Second => {
+                        while self.state != MergeIteratorState::Done {
+                            let out = match first.1.next() {
+                                Some(Ok(next)) => {
+                                    let fl = next.to_string();
+                                    let p = fl.replace(&first.0.to_string().to_string(), "");
+                                    if self.seen.contains(&String::from(fl)) {
+                                        None
+                                    } else {
+                                
+                                        Some(Ok(OneOrTwo::One(OneOf::First(next))))
+                                    }
+                                },
+                                Some(Err(err)) => Some(Err(err)),
+                                None => {
+                                    self.state = MergeIteratorState::Done;
+                                    return None
+                                }
+                            };
 
-                if m.is_some() {
-                    return m;
+                            if out.is_some() {
+                                return out;
+                            }
+
+                        }
+
+                        None
+                    },
+                    _ => None,
                 }
             }
-            None
-        } else {
-            None
+            _ => None,
+        };
+
+        if out.is_none() {
+            self.state = MergeIteratorState::Done;
         }
+
+        out
+       
     }
 }
 
-pub struct MergeMetadata<S, P>
+#[derive(Debug)]
+pub struct OneOfIterator<S, P>
 where
     S: VPath,
     P: VPath,
 {
-    inner: OneOf<S::Metadata, P::Metadata>,
+    inner: OneOf<S::Iterator, P::Iterator>,
 }
 
-impl<S, P> MergeMetadata<S, P>
+impl<S, P> OneOfIterator<S, P>
 where
     S: VPath,
     P: VPath,
 {
-    pub(super) fn new(inner: OneOf<S::Metadata, P::Metadata>) -> MergeMetadata<S, P> {
-        MergeMetadata { inner }
+    pub fn new(one: OneOf<S::Iterator, P::Iterator>) -> OneOfIterator<S, P> {
+        OneOfIterator { inner: one }
     }
 }
 
-impl<S, P> VMetadata for MergeMetadata<S, P>
+impl<S, P> Iterator for OneOfIterator<S, P>
 where
     S: VPath,
     P: VPath,
 {
-    fn is_dir(&self) -> bool {
-        match &self.inner {
-            OneOf::First(m) => m.is_dir(),
-            OneOf::Second(m) => m.is_dir(),
-            // OneOf::None => false,
-        }
-    }
-    /// Returns true iff this path is a file
-    fn is_file(&self) -> bool {
-        match &self.inner {
-            OneOf::First(m) => m.is_file(),
-            OneOf::Second(m) => m.is_file(),
-            // OneOf::None => false,
-        }
-    }
-    /// Returns the length of the file at this path
-    fn len(&self) -> u64 {
-        match &self.inner {
-            OneOf::First(m) => m.len(),
-            OneOf::Second(m) => m.len(),
-            // OneOf::None => 0,
+    type Item = Result<OneOf<S, P>>;
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            OneOf::First(s) => s.next().map(|m| m.map(|m| OneOf::First(m))),
+            OneOf::Second(s) => s.next().map(|m| m.map(|m| OneOf::Second(m))),
         }
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
@@ -456,5 +595,27 @@ mod tests {
 
         assert!(overlay.path("/test.txt").exists());
         assert!(overlay.path("/test2.txt").exists());
+    }
+
+    #[test]
+    fn test_overlay_iterator() {
+        let m1 = MemoryFS::new();
+        let mut f = m1.path("/test.txt").create().unwrap();
+        f.write(b"Hello, World!");
+        f.flush();
+
+        let m2 = MemoryFS::new();
+        let mut f = m1.path("/test2.txt").create().unwrap();
+        f.write(b"Hello, World!");
+        f.flush();
+
+        let overlay = m1.merge(m2);
+
+        let mut iter = overlay.path("").read_dir().unwrap();
+
+
+        for i in iter {
+            println!("iter {:?}", i.unwrap().to_string());
+        }
     }
 }

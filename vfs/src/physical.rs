@@ -336,7 +336,7 @@ mod tests {
         let vfs = PhysicalFS::new(".").unwrap();
         let src = vfs.path("./src");
         let entries: Vec<Result<PhysicalPath>> = src.read_dir().unwrap().collect();
-        println!("{:#?}", entries);
+        //println!("{:#?}", entries);
     }
 
     #[test]
