@@ -351,12 +351,12 @@ where
                         (s.clone(), s1.unwrap()),
                         (p.clone(), s2.unwrap()),
                     )))
-                } else if s1.is_ok() {
-                    Ok(MergeIterator::new(OneOrTwo::One(OneOf::First((
-                        s.clone(),
-                        s1.unwrap(),
-                    )))))
                 } else if s2.is_ok() {
+                    Ok(MergeIterator::new(OneOrTwo::One(OneOf::Second((
+                        p.clone(),
+                        s2.unwrap(),
+                    )))))
+                } else if s1.is_ok() {
                     Ok(MergeIterator::new(OneOrTwo::One(OneOf::First((
                         s.clone(),
                         s1.unwrap(),
