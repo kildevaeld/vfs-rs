@@ -270,6 +270,7 @@ impl Debug for PhysicalPath {
 //     }
 // }
 
+#[derive(Debug)]
 pub struct PhysicalReadDir {
     inner: ReadDir,
     root: Arc<PathBuf>,
