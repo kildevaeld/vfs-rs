@@ -4,6 +4,7 @@ pub mod glob;
 pub mod memory;
 pub mod overlay;
 pub mod physical;
+pub mod composite;
 mod traits;
 mod utils;
 
