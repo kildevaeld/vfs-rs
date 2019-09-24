@@ -27,6 +27,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct Merge<S, P> {
     s: S,
     p: P,

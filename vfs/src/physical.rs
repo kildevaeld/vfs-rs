@@ -15,6 +15,7 @@ use std::sync::Arc;
 impl VFile for std::fs::File {}
 
 /// A "physical" file system implementation using the underlying OS file system
+#[derive(Debug, Clone)]
 pub struct PhysicalFS {
     root: Arc<PathBuf>,
 }

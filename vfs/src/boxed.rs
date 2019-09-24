@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::io::{Read, Result, Write};
 use std::path::PathBuf;
 
-pub trait BVFS: Sync + Send {
+pub trait BVFS: Sync + Send + Debug {
     fn path(&self, path: &str) -> Box<dyn BPath>;
 }
 
@@ -46,6 +46,8 @@ pub trait BPath: Debug + Send + Sync {
     fn box_clone(&self) -> Box<dyn BPath>;
     fn to_string(&self) -> Cow<str>;
 }
+
+
 
 #[derive(Debug)]
 struct BPathWrapper<P> {
@@ -184,6 +186,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct BVFSWrapper<V> {
     inner: V,
 }

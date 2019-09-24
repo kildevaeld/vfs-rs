@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 pub trait VFile: Read + Write {}
 
-pub trait VFS: Sync + Send {
+pub trait VFS: Sync + Send + Debug {
     type Path: VPath;
     fn path(&self, path: &str) -> Self::Path;
 }
