@@ -136,7 +136,7 @@ impl BPath for RootPath {
         Box::new(self.clone())
     }
     fn to_string(&self) -> std::borrow::Cow<str> {
-        std::borrow::Cow::Borrowed(&self.0)
+        std::borrow::Cow::Owned(format!("/{}", self.0))
     }
 }
 
