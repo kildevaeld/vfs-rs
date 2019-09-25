@@ -260,9 +260,9 @@ impl VFS for Composite {
             return Box::new(clone)
         }
 
-        let mut split = path.split("/");
+        let mut split = path.trim_start_matches('/').split("/");
         let first = split.next();
-    
+        
         match first {
             Some(s) => match self.mounts.get(s) {
                 Some(p) =>Box::new(WrapPath(s.to_string(), p.path(split.collect::<Vec<_>>().join("/").as_str()))),
@@ -287,7 +287,7 @@ impl BPath for Composite {
 
     /// append a segment to this path
     fn resolve(&self, path: &str) -> Box<dyn BPath> {
-        let mut split = path.split("/");
+        let mut split = path.trim_start_matches('/').split("/");
         let first = split.next();
     
         match first {
@@ -373,7 +373,7 @@ mod tests {
 
         let com = Composite::new().mount("app1", m1).mount("app2", m2);
 
-        assert_eq!(com.path("app1/test.txt").to_string(), std::borrow::Cow::Borrowed("/app1/test.txt"));
+        assert_eq!(com.path("/app1/test.txt").to_string(), std::borrow::Cow::Borrowed("/app1/test.txt"));
     }
 
     #[test]
