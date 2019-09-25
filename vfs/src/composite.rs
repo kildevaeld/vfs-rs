@@ -130,6 +130,81 @@ impl BPath for RootPath {
     }
 }
 
+#[derive(Debug, Clone)]
+struct WrapPath(String, Box<dyn BPath>);
+
+impl BPath for WrapPath {
+    fn file_name(&self) -> Option<String> {
+        self.1.file_name()
+    }
+
+    /// The extension of this filename
+    fn extension(&self) -> Option<String> {
+        self.1.extension()
+    }
+
+    /// append a segment to this path
+    fn resolve(&self, path: &str) -> Box<dyn BPath> {
+        Box::new(WrapPath(self.0.clone(), self.1.resolve(path)))
+    }
+
+    /// Get the parent path
+    fn parent(&self) -> Option<Box<dyn BPath>> {
+        None
+    }
+
+    /// Check if the file existst
+    fn exists(&self) -> bool {
+        self.1.exists()
+    }
+
+    /// Get the file's metadata
+    fn metadata(&self) -> Result<Box<dyn VMetadata>> {
+       self.1.metadata()
+    }
+
+    fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>> {
+        self.1.open(options)
+    }
+
+    fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<Box<dyn BPath>>>>> {
+        let name = self.0.clone();
+        match self.1.read_dir() {
+            Ok(s) => {
+                let iter = s.map(move |m| {
+                    let n = name.clone();
+                    m.map(move |m| Box::new(WrapPath(n, m)) as Box<dyn BPath>)});
+                Ok(Box::new(iter))
+            },
+            Err(e) => Err(e)
+        }
+    //    self.1.read_dir().map(|m| Box::new(m.map(|m| {
+    //        m.map(|m| Box::new(WrapPath(name.clone(), m)))
+    //    })))
+    }
+
+    // fn create(&self) -> Result<Box<dyn BFile>>;
+    // fn append(&self) -> Result<Box<dyn BFile>>;
+    /// Create a directory at the location by this path
+    fn mkdir(&self) -> Result<()> {
+        self.1.mkdir()
+    }
+    /// Remove a file
+    fn rm(&self) -> Result<()> {
+       self.1.rm()
+    }
+    /// Remove a file or directory and all its contents
+    fn rm_all(&self) -> Result<()> {
+       self.1.rm_all()
+    }
+    fn box_clone(&self) -> Box<dyn BPath> {
+        Box::new(self.clone())
+    }
+    fn to_string(&self) -> std::borrow::Cow<str> {
+        std::borrow::Cow::Borrowed(&self.0)
+    }
+}
+
 struct RootMetadata;
 
 impl VMetadata for RootMetadata {
@@ -193,7 +268,7 @@ impl BPath for Composite {
 
     fn file_name(&self) -> Option<String> {
         None
-    }
+    } 
 
     /// The extension of this filename
     fn extension(&self) -> Option<String> {
@@ -294,7 +369,7 @@ mod tests {
 
     #[test]
     fn test_composite_iter() {
-        
+
     }
 
 }
