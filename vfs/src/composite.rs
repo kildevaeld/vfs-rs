@@ -105,7 +105,17 @@ impl BPath for RootPath {
     }
 
     fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<Box<dyn BPath>>>>> {
-       self.1.path("").read_dir()
+       //self.1.path("").read_dir()
+       let name = self.0.clone();
+        match self.1.path("").read_dir() {
+            Ok(s) => {
+                let iter = s.map(move |m| {
+                    let n = name.clone();
+                    m.map(move |m| Box::new(WrapPath(n, m)) as Box<dyn BPath>)});
+                Ok(Box::new(iter))
+            },
+            Err(e) => Err(e)
+        }
     }
 
     // fn create(&self) -> Result<Box<dyn BFile>>;
@@ -201,7 +211,7 @@ impl BPath for WrapPath {
         Box::new(self.clone())
     }
     fn to_string(&self) -> std::borrow::Cow<str> {
-        std::borrow::Cow::Borrowed(&self.0)
+        std::borrow::Cow::Owned(format!("/{}", pathutils::join(&self.0, &self.1.to_string())))
     }
 }
 
@@ -250,12 +260,12 @@ impl VFS for Composite {
             return Box::new(clone)
         }
 
-        let split = path.split("/");
-        let first = path.split("/").next();
+        let mut split = path.split("/");
+        let first = split.next();
     
         match first {
             Some(s) => match self.mounts.get(s) {
-                Some(p) => p.path(split.collect::<String>().as_str()),
+                Some(p) =>Box::new(WrapPath(s.to_string(), p.path(split.collect::<Vec<_>>().join("/").as_str()))),
                 None => Box::new(EmptyPath),
             },
             None => Box::new(EmptyPath),
@@ -277,12 +287,12 @@ impl BPath for Composite {
 
     /// append a segment to this path
     fn resolve(&self, path: &str) -> Box<dyn BPath> {
-        let split = path.split("/");
-        let first = path.split("/").next();
+        let mut split = path.split("/");
+        let first = split.next();
     
         match first {
             Some(s) => match self.mounts.get(s) {
-                Some(p) => p.path(split.collect::<String>().as_str()),
+                Some(p) => Box::new(WrapPath(s.to_string(), p.path(split.collect::<Vec<_>>().join("/").as_str()))),
                 None => Box::new(EmptyPath),
             },
             None => Box::new(EmptyPath),
@@ -351,6 +361,20 @@ mod tests {
     use super::super::traits::*;
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn test_to_string() {
+        let mut m1 = MemoryFS::new();
+        let mut f = m1.path("/test.txt").create().unwrap();
+        f.write(b"Hello, World!");
+        f.flush();
+        let m2 = MemoryFS::new();
+        
+
+        let com = Composite::new().mount("app1", m1).mount("app2", m2);
+
+        assert_eq!(com.path("app1/test.txt").to_string(), std::borrow::Cow::Borrowed("/app1/test.txt"));
+    }
 
     #[test]
     fn test_composite() {

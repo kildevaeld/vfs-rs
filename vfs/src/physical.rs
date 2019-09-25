@@ -67,7 +67,7 @@ impl VFS for PhysicalFS {
                 full_path: PathBuf::from(fp),
             };
         }
-        let path = format!("/{}", path);
+        let path = pathutils::resolve("/", path).unwrap(); // format!("/{}", path);
 
         PhysicalPath {
             root: self.root.clone(),
@@ -305,6 +305,14 @@ mod tests {
 
     use super::{VPath, OpenOptions};
     use super::*;
+
+    #[test]
+    fn to_string() {
+        let vfs = PhysicalFS::new(".").unwrap();
+        let path = vfs.path("./src/boxed.rs");
+        assert_eq!(path.to_string(), std::borrow::Cow::Borrowed("/src/boxed.rs"));
+    }
+
     #[test]
     fn read_file() {
         let vfs = PhysicalFS::new(".").unwrap();
