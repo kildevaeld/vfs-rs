@@ -39,8 +39,6 @@ pub trait VPath: Debug + Sync + Send + Clone {
     fn open(&self, options: OpenOptions) -> Result<Self::File>;
     fn read_dir(&self) -> Result<Self::Iterator>;
 
-    // fn create(&self) -> Result<Self::File>;
-    // fn append(&self) -> Result<Self::File>;
 
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()>;
@@ -59,26 +57,6 @@ pub trait VPath: Debug + Sync + Send + Clone {
 
 }
 
-// pub trait ReadPath: VPath {
-//     type Read: Read + Send;
-//     type Iterator: Iterator<Item = Result<Self>>;
-
-//     fn open(&self) -> Result<Self::Read>;
-//     fn read_dir(&self) -> Result<Self::Iterator>;
-// }
-
-// pub trait WritePath: ReadPath {
-//     type Write: Write + Read + Send;
-
-//     fn create(&self) -> Result<Self::Write>;
-//     fn append(&self) -> Result<Self::Write>;
-//     /// Create a directory at the location by this path
-//     fn mkdir(&self) -> Result<()>;
-//     /// Remove a file
-//     fn rm(&self) -> Result<()>;
-//     /// Remove a file or directory and all its contents
-//     fn rm_all(&self) -> Result<()>;
-// }
 
 pub trait VMetadata {
     fn is_dir(&self) -> bool;

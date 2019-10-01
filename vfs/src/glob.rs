@@ -1,6 +1,6 @@
 use super::traits::{VPath};
 use super::utils::WalkDirIter;
-use globset::{Candidate, Glob, GlobMatcher, GlobSet, GlobSetBuilder};
+use globset::{ Glob, GlobMatcher, GlobSet, GlobSetBuilder};
 
 #[derive(Clone)]
 enum Globber {

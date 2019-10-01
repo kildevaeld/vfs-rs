@@ -222,54 +222,7 @@ impl Debug for PhysicalPath {
     }
 }
 
-// impl ReadPath for PhysicalPath {
-//     type Read = File;
-//     type Iterator = PhysicalReadDir;
-//     fn open(&self) -> Result<File> {
-//         File::open(&self.full_path)
-//     }
 
-//     fn read_dir(&self) -> Result<PhysicalReadDir> {
-//         self.full_path.read_dir().map(|inner| PhysicalReadDir {
-//             inner: inner,
-//             root: self.root.clone(),
-//         })
-//     }
-// }
-
-// impl WritePath for PhysicalPath {
-//     type Write = File;
-//     fn create(&self) -> Result<File> {
-//         File::create(&self.full_path)
-//     }
-
-//     fn append(&self) -> Result<File> {
-//         FSOpenOptions::new()
-//             .write(true)
-//             .append(true)
-//             .open(&self.full_path)
-//     }
-
-//     fn mkdir(&self) -> Result<()> {
-//         DirBuilder::new().recursive(true).create(&self.full_path)
-//     }
-
-//     fn rm(&self) -> Result<()> {
-//         if self.full_path.is_dir() {
-//             remove_dir(&self.full_path)
-//         } else {
-//             remove_file(&self.full_path)
-//         }
-//     }
-
-//     fn rm_all(&self) -> Result<()> {
-//         if self.full_path.is_dir() {
-//             remove_dir_all(&self.full_path)
-//         } else {
-//             remove_file(&self.full_path)
-//         }
-//     }
-// }
 
 #[derive(Debug)]
 pub struct PhysicalReadDir {
@@ -345,7 +298,7 @@ mod tests {
     fn read_dir() {
         let vfs = PhysicalFS::new(".").unwrap();
         let src = vfs.path("./src");
-        let entries: Vec<Result<PhysicalPath>> = src.read_dir().unwrap().collect();
+        let _entries: Vec<Result<PhysicalPath>> = src.read_dir().unwrap().collect();
         //println!("{:#?}", entries);
     }
 

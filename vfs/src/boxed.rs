@@ -8,8 +8,6 @@ pub trait BVFS: Sync + Send + Debug {
     fn path(&self, path: &str) -> Box<dyn BPath>;
 }
 
-
-
 pub trait BFile: Read + Write + Send {}
 
 impl<T> BFile for T where T: Read + Write + Send {}
@@ -35,8 +33,6 @@ pub trait BPath: Debug + Send + Sync {
     fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>>;
     fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<Box<dyn BPath>>>>>;
 
-    // fn create(&self) -> Result<Box<dyn BFile>>;
-    // fn append(&self) -> Result<Box<dyn BFile>>;
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()>;
     /// Remove a file
@@ -47,14 +43,10 @@ pub trait BPath: Debug + Send + Sync {
     fn to_string(&self) -> Cow<str>;
 }
 
-
-
 #[derive(Debug)]
 struct BPathWrapper<P> {
     inner: P,
 }
-
-
 
 impl<P> BPath for BPathWrapper<P>
 where
@@ -110,18 +102,6 @@ where
         }
     }
 
-    // fn create(&self) -> Result<Box<dyn BFile>> {
-    //     match self.inner.create() {
-    //         Ok(m) => Ok(Box::new(m)),
-    //         Err(e) => Err(e),
-    //     }
-    // }
-    // fn append(&self) -> Result<Box<dyn BFile>> {
-    //     match self.inner.append() {
-    //         Ok(m) => Ok(Box::new(m)),
-    //         Err(e) => Err(e),
-    //     }
-    // }
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()> {
         self.inner.mkdir()
@@ -152,8 +132,6 @@ impl Clone for Box<dyn BPath> {
         self.box_clone()
     }
 }
-
-
 
 struct BPathIterator<Iter, I> {
     inner: Iter,
@@ -203,16 +181,15 @@ where
     }
 }
 
-
-
-pub fn vfs_box<V: VFS + 'static>(v: V) -> Box<dyn BVFS>
-
-{
+pub fn vfs_box<V: VFS + 'static>(v: V) -> Box<dyn BVFS> {
     Box::new(BVFSWrapper { inner: v })
 }
 
-
-
+pub fn path_box<V: VPath + 'static>(path: V) -> Box<dyn BPath> {
+    Box::new(BPathWrapper {
+        inner: path,
+    })
+}
 
 impl VPath for Box<dyn BPath> {
     type Metadata = Box<dyn VMetadata + 'static>;
@@ -256,7 +233,7 @@ impl VPath for Box<dyn BPath> {
         None
     }
 
-     fn open(&self, options: OpenOptions) -> Result<Self::File> {
+    fn open(&self, options: OpenOptions) -> Result<Self::File> {
         self.as_ref().open(options)
     }
 
@@ -264,12 +241,6 @@ impl VPath for Box<dyn BPath> {
         self.as_ref().read_dir()
     }
 
-    // fn create(&self) -> Result<Self::File> {
-    //     self.as_ref().create()
-    // }
-    // fn append(&self) -> Result<Self::File> {
-    //     self.as_ref().append()
-    // }
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()> {
         self.as_ref().mkdir()
@@ -283,8 +254,6 @@ impl VPath for Box<dyn BPath> {
         self.as_ref().rm_all()
     }
 }
-
-
 
 impl VMetadata for Box<dyn VMetadata> {
     fn is_dir(&self) -> bool {
@@ -311,7 +280,7 @@ mod tests {
         let m = MemoryFS::new();
         let b = vfs_box(m);
         let mut f = b.path("/test.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
     }
 }

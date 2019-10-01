@@ -1,8 +1,7 @@
 use super::traits::*;
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fmt;
-use std::io::{Error, ErrorKind, Read, Result};
+use std::io::{ErrorKind, Read, Result};
 use std::path::PathBuf;
 
 pub trait Overlay: VFS + Sized
@@ -47,12 +46,6 @@ where
     type Path = OneOrTwo<S::Path, P::Path>;
 
     fn path(&self, path: &str) -> Self::Path {
-        // let p = self.p.path(path);
-        // if !p.exists() && self.s.path(path).exists() {
-        //     OneOf::First(self.s.path(path))
-        // } else {
-        //     OneOf::Second(p)
-        // }
         OneOrTwo::Two(self.s.path(path), self.p.path(path))
     }
 }
@@ -61,7 +54,6 @@ where
 pub enum OneOf<S, P> {
     First(S),
     Second(P),
-    // None,
 }
 
 impl<S: Clone, P: Clone> Clone for OneOf<S, P> {
@@ -69,7 +61,6 @@ impl<S: Clone, P: Clone> Clone for OneOf<S, P> {
         match self {
             OneOf::First(m) => OneOf::First(m.clone()),
             OneOf::Second(m) => OneOf::Second(m.clone()),
-            // OneOf::None => OneOf::None,
         }
     }
 }
@@ -83,7 +74,6 @@ where
         match self {
             OneOf::First(m) => m.is_dir(),
             OneOf::Second(m) => m.is_dir(),
-            // OneOf::None => false,
         }
     }
     /// Returns true iff this path is a file
@@ -91,7 +81,6 @@ where
         match self {
             OneOf::First(m) => m.is_file(),
             OneOf::Second(m) => m.is_file(),
-            // OneOf::None => false,
         }
     }
     /// Returns the length of the file at this path
@@ -99,7 +88,6 @@ where
         match self {
             OneOf::First(m) => m.len(),
             OneOf::Second(m) => m.len(),
-            // OneOf::None => 0,
         }
     }
 }
@@ -120,10 +108,6 @@ where
     type Iterator = OneOfIterator<S, P>;
 
     fn file_name(&self) -> Option<String> {
-        // match self.inner.s.file_name() {
-        //     Some(m) => Some(m),
-        //     None => self.inner.s.file_name(),
-        // }
         match self {
             OneOf::First(s) => s.file_name(),
             OneOf::Second(s) => s.file_name(),
@@ -132,10 +116,6 @@ where
 
     /// The extension of this filename
     fn extension(&self) -> Option<String> {
-        // match self.inner.p.extension() {
-        //     Some(m) => Some(m),
-        //     None => self.inner.s.extension(),
-        // }
         match self {
             OneOf::First(s) => s.extension(),
             OneOf::Second(s) => s.extension(),
@@ -222,8 +202,6 @@ where
         Err(ErrorKind::PermissionDenied.into())
     }
 }
-
-
 
 impl<S, P> VPath for OneOrTwo<S, P>
 where
@@ -323,7 +301,6 @@ where
         if o.append || o.create || o.truncate {
             return Err(ErrorKind::PermissionDenied.into());
         }
-       
         match self {
             OneOrTwo::One(s) => s.open(o),
             // FIXME: Handle if both is a dir
@@ -334,7 +311,6 @@ where
     }
 
     fn read_dir(&self) -> Result<Self::Iterator> {
-       
         match self {
             OneOrTwo::One(s) => match s {
                 OneOf::First(s) => s
@@ -369,7 +345,6 @@ where
         }
     }
 
-
     /// Create a directory at the location by this path
     fn mkdir(&self) -> Result<()> {
         Err(ErrorKind::PermissionDenied.into())
@@ -383,7 +358,6 @@ where
         Err(ErrorKind::PermissionDenied.into())
     }
 }
-
 
 pub struct MergeFile<S, P> {
     inner: OneOf<S, P>,
@@ -404,7 +378,7 @@ where
 }
 
 impl<S, P> std::io::Write for MergeFile<S, P> {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+    fn write(&mut self, _buf: &[u8]) -> Result<usize> {
         Err(ErrorKind::PermissionDenied.into())
     }
 
@@ -463,7 +437,6 @@ where
             return None;
         }
 
-        
         let out = match &mut self.inner {
             OneOrTwo::One(OneOf::First((_, i))) => {
                 i.next().map(|m| m.map(|m| OneOrTwo::One(OneOf::First(m))))
@@ -473,60 +446,53 @@ where
             }
             OneOrTwo::Two(first, second) => {
                 match self.state {
-                    MergeIteratorState::First => {
-                        match second.1.next() {
-                            Some(Ok(s)) => {
-                                let fl = s.to_string();
-                                let p = fl.replace(&second.0.to_string().to_string(), "");
-                                self.seen.insert(String::from(fl));
-                                if first.0.resolve(&p).exists() {
-                                    Some(Ok(OneOrTwo::Two(first.0.resolve(&p), s)))
-                                
-                                } else {
-                                    Some(Ok(OneOrTwo::One(OneOf::Second(s))))
-                                    
-                                }
-                            }
-                            Some(Err(e)) => Some(Err(e)),
-                            None => {
-                                self.state = MergeIteratorState::Second;
-                                self.next()
-                                
+                    MergeIteratorState::First => match second.1.next() {
+                        Some(Ok(s)) => {
+                            let fl = s.to_string();
+                            let p = fl.replace(&second.0.to_string().to_string(), "");
+                            self.seen.insert(String::from(fl));
+                            if first.0.resolve(&p).exists() {
+                                Some(Ok(OneOrTwo::Two(first.0.resolve(&p), s)))
+                            } else {
+                                Some(Ok(OneOrTwo::One(OneOf::Second(s))))
                             }
                         }
-                    }
+                        Some(Err(e)) => Some(Err(e)),
+                        None => {
+                            self.state = MergeIteratorState::Second;
+                            self.next()
+                        }
+                    },
                     MergeIteratorState::Second => {
                         while self.state != MergeIteratorState::Done {
                             let out = match first.1.next() {
                                 Some(Ok(next)) => {
                                     let fl = next.to_string();
-                                    let p = fl.replace(&first.0.to_string().to_string(), "");
+                                    //let p = fl.replace(&first.0.to_string().to_string(), "");
                                     if self.seen.contains(&String::from(fl)) {
                                         None
                                     } else {
-                                
                                         Some(Ok(OneOrTwo::One(OneOf::First(next))))
                                     }
-                                },
+                                }
                                 Some(Err(err)) => Some(Err(err)),
                                 None => {
                                     self.state = MergeIteratorState::Done;
-                                    return None
+                                    return None;
                                 }
                             };
 
                             if out.is_some() {
                                 return out;
                             }
-
                         }
 
                         None
-                    },
+                    }
                     _ => None,
                 }
             }
-            _ => None,
+            //_ => None,
         };
 
         if out.is_none() {
@@ -534,7 +500,6 @@ where
         }
 
         out
-       
     }
 }
 
@@ -571,8 +536,6 @@ where
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
 
@@ -584,13 +547,13 @@ mod tests {
     fn test_overlay() {
         let m1 = MemoryFS::new();
         let mut f = m1.path("/test.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
 
         let m2 = MemoryFS::new();
         let mut f = m1.path("/test2.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
 
         let overlay = m1.merge(m2);
 
@@ -602,18 +565,17 @@ mod tests {
     fn test_overlay_iterator() {
         let m1 = MemoryFS::new();
         let mut f = m1.path("/test.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
 
         let m2 = MemoryFS::new();
         let mut f = m1.path("/test2.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
 
         let overlay = m1.merge(m2);
 
-        let mut iter = overlay.path("").read_dir().unwrap();
-
+        let iter = overlay.path("").read_dir().unwrap();
 
         for i in iter {
             println!("iter {:?}", i.unwrap().to_string());

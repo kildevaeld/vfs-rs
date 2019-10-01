@@ -336,12 +336,6 @@ impl VPath for MemoryPath {
     fn extension(&self) -> Option<String> {
         match self.file_name() {
             Some(name) => {
-                // let v: Vec<&str> = name.rsplitn(2, '.').collect();
-                // if v.len() == 2 {
-                //     Some(v.get(0).unwrap().to_owned().to_owned())
-                // } else {
-                //     None
-                // }
                 pathutils::extname(name)
             }
             None => None,
@@ -389,13 +383,6 @@ impl VPath for MemoryPath {
         return Ok(children.into_iter());
     }
 
-    // fn create(&self) -> Result<Self::File> {
-    //     self.open_with_options(OpenOptions::new().write(true).create(true).truncate(true))
-    // }
-    // fn append(&self) -> Result<Self::File> {
-    //     self.open_with_options(OpenOptions::new().write(true).create(true).append(true))
-    // }
-
     fn mkdir(&self) -> Result<()> {
         let root = &mut self.fs.write().unwrap().root;
         let mut components: Vec<&str> = self.path.split("/").collect();
@@ -425,67 +412,6 @@ impl VPath for MemoryPath {
         self.rm()
     }
 }
-
-// impl ReadPath for MemoryPath {
-//     type Read = MemoryFile;
-//     type Iterator = <Vec<Result<MemoryPath>> as IntoIterator>::IntoIter;
-
-//     fn open(&self) -> Result<Self::Read> {
-//         self.open_with_options(OpenOptions::new().read(true))
-//     }
-
-//     fn read_dir(&self) -> Result<Self::Iterator> {
-//         let children = self.with_node(|node| {
-//             let children: Vec<_> = node
-//                 .children
-//                 .keys()
-//                 .map(|name| Ok(MemoryPath::new(&self.fs, self.path.clone() + "/" + name)))
-//                 .collect();
-//             return children;
-//         })?;
-//         return Ok(children.into_iter());
-//     }
-// }
-
-// impl WritePath for MemoryPath {
-//     type Write = MemoryFile;
-
-//     fn create(&self) -> Result<Self::Write> {
-//         self.open_with_options(OpenOptions::new().write(true).create(true).truncate(true))
-//     }
-//     fn append(&self) -> Result<Self::Write> {
-//         self.open_with_options(OpenOptions::new().write(true).create(true).append(true))
-//     }
-
-//     fn mkdir(&self) -> Result<()> {
-//         let root = &mut self.fs.write().unwrap().root;
-//         let mut components: Vec<&str> = self.path.split("/").collect();
-//         components.reverse();
-//         components.pop();
-//         traverse_mkdir(root, &mut components)
-//     }
-
-//     fn rm(&self) -> Result<()> {
-//         let parent_path = match self.parent_internal() {
-//             None => {
-//                 return Err(Error::new(
-//                     ErrorKind::Other,
-//                     format!("File is not a file: {:?}", self.file_name()),
-//                 ));
-//             }
-//             Some(parent) => parent,
-//         };
-//         parent_path.with_node(|node| {
-//             let file_name = self.file_name().unwrap();
-//             node.children.remove(&file_name);
-//         })?;
-//         Ok(())
-//     }
-
-//     fn rm_all(&self) -> Result<()> {
-//         self.rm()
-//     }
-// }
 
 impl<'a> From<&'a MemoryPath> for String {
     fn from(path: &'a MemoryPath) -> String {

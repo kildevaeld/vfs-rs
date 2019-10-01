@@ -18,7 +18,7 @@ impl BPath for EmptyPath {
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Box<dyn BPath> {
+    fn resolve(&self, _path: &str) -> Box<dyn BPath> {
         Box::new(EmptyPath)
     }
 
@@ -37,7 +37,7 @@ impl BPath for EmptyPath {
         Err(ErrorKind::NotFound.into())
     }
 
-    fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>> {
+    fn open(&self, _options: OpenOptions) -> Result<Box<dyn BFile>> {
         Err(ErrorKind::NotFound.into())
     }
 
@@ -100,7 +100,7 @@ impl BPath for RootPath {
         Ok(Box::new(RootMetadata))
     }
 
-    fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>> {
+    fn open(&self, _options: OpenOptions) -> Result<Box<dyn BFile>> {
         Err(ErrorKind::InvalidInput.into())
     }
 
@@ -320,7 +320,7 @@ impl BPath for Composite {
 
    
 
-    fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>> {
+    fn open(&self, _options: OpenOptions) -> Result<Box<dyn BFile>> {
         Err(ErrorKind::PermissionDenied.into())
     }
     
@@ -364,10 +364,10 @@ mod tests {
 
     #[test]
     fn test_to_string() {
-        let mut m1 = MemoryFS::new();
+        let m1 = MemoryFS::new();
         let mut f = m1.path("/test.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
         let m2 = MemoryFS::new();
         
 
@@ -378,10 +378,10 @@ mod tests {
 
     #[test]
     fn test_composite() {
-        let mut m1 = MemoryFS::new();
+        let  m1 = MemoryFS::new();
         let mut f = m1.path("/test.txt").create().unwrap();
-        f.write(b"Hello, World!");
-        f.flush();
+        f.write(b"Hello, World!").unwrap();
+        f.flush().unwrap();
         let m2 = MemoryFS::new();
         
 

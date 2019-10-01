@@ -23,9 +23,9 @@ pub trait VPathExt: VPath + Sized {
     }
 }
 
-fn noop<P: VPath>(path: &P) -> bool {
-    true
-}
+// fn noop<P: VPath>(path: &P) -> bool {
+//     true
+// }
 
 pub struct WalkDirIter<P> {
     todo: Vec<P>,
