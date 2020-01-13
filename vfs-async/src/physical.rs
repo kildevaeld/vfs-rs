@@ -3,10 +3,6 @@ use pathutils;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 use std::fs::{canonicalize, Metadata};
-// use std::fs::{
-//     canonicalize, remove_dir, remove_dir_all, remove_file, DirBuilder, File, Metadata,
-//     OpenOptions as FSOpenOptions, ReadDir,
-// };
 use async_trait::async_trait;
 use futures_core::Stream;
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, IoSlice, IoSliceMut};
@@ -245,17 +241,6 @@ impl VPath for PhysicalPath {
             root: self.root.clone(),
         })
     }
-
-    // fn create(&self, options: OpenOptions) -> Result<File> {
-    //     File::create(&self.full_path)
-    // }
-
-    // fn append(&self) -> Result<File> {
-    //     FSOpenOptions::new()
-    //         .write(true)
-    //         .append(true)
-    //         .open(&self.full_path)
-    // }
 
     async fn mkdir(&self) -> Result<()> {
         fs::create_dir_all(&self.full_path).await?;
