@@ -7,6 +7,8 @@ use std::pin::Pin;
 use std::future::Future;
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
 
+use futures_util::future::BoxFuture;
+
 pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite {}
 
 pub trait VFS {
@@ -14,7 +16,6 @@ pub trait VFS {
     fn path(&self, path: &str) -> Self::Path;
 }
 
-#[async_trait]
 pub trait VPath: Clone {
     type Metadata: VMetadata;
     type File: VFile;
@@ -32,31 +33,32 @@ pub trait VPath: Clone {
     fn parent(&self) -> Option<Self>;
 
     /// Check if the file existst
-    async fn exists(&self) -> bool;
+    fn exists(&self) -> BoxFuture<'static, bool>;
 
     /// Get the file's metadata
-    async fn metadata(&self) -> Result<Self::Metadata>;
+    fn metadata(&self) -> BoxFuture<'static, Result<Self::Metadata>>;
 
     fn to_string(&self) -> Cow<str>;
 
     fn to_path_buf(&self) -> Option<PathBuf>;
 
-    async fn open(&self, options: OpenOptions) -> Result<Self::File>;
-    async fn read_dir(&self) -> Result<Self::ReadDir>;
+    fn open(&self, options: OpenOptions) ->  BoxFuture<'static, Result<Self::File>>;
+    fn read_dir(&self) ->  BoxFuture<'static, Result<Self::ReadDir>>;
 
     /// Create a directory at the location by this path
-    async fn mkdir(&self) -> Result<()>;
+    fn mkdir(&self) ->  BoxFuture<'static, Result<()>>;
     /// Remove a file
-    async fn rm(&self) -> Result<()>;
+    fn rm(&self) -> BoxFuture<'static, Result<()>>;
     /// Remove a file or directory and all its contents
-    async fn rm_all(&self) -> Result<()>;
+    fn rm_all(&self) -> BoxFuture<'static, Result<()>>;
 
-    // async fn create(&self) -> Pin<Box<dyn Future<Output = Result<Self::File>> + std::marker::Send + 'async>> {
-    //     self.open(OpenOptions::new().write(true).create(true).truncate(true))
-    // }
-    // async fn append(&self) -> Result<Self::File> {
-    //     self.open(OpenOptions::new().write(true).create(true).append(true))
-    // }
+    fn create(&self) -> BoxFuture<'static, Result<Self::File>> {
+        self.open(OpenOptions::new().write(true).create(true).truncate(true))
+    }
+    
+    fn append(&self) -> BoxFuture<'static, Result<Self::File>> {
+        self.open(OpenOptions::new().write(true).create(true).append(true))
+    }
 
 }
 

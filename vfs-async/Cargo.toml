@@ -14,9 +14,12 @@ futures-util = { version = "0.3", features = [ "io" ] }
 pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
 tokio = { version = "0.2", features = [ "fs" ], optional = true }
 pin-project = "0.4"
+globset = { version = "^0.4", optional = true }
+
 
 [features]
-default = ["tokio"]
+default = [ "tokio", "glob" ]
+glob = ["globset", "pathutils/glob"]
 
 
 [dev-dependencies]

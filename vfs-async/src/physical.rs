@@ -1,12 +1,13 @@
 use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
-use pathutils;
-use std::borrow::Cow;
-use std::fmt::{self, Debug};
-use std::fs::{canonicalize, Metadata};
 use async_trait::async_trait;
 use futures_core::Stream;
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, IoSlice, IoSliceMut};
+use futures_util::future::{BoxFuture, FutureExt};
+use pathutils;
 use pin_project::pin_project;
+use std::borrow::Cow;
+use std::fmt::{self, Debug};
+use std::fs::{canonicalize, Metadata};
 use std::io::{Result, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -36,11 +37,7 @@ impl AsyncRead for PhysicalFile {
 }
 
 impl AsyncWrite for PhysicalFile {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize>> {
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
         self.project().0.poll_write(cx, buf)
     }
 
@@ -140,7 +137,6 @@ pub struct PhysicalPath {
     full_path: PathBuf,
 }
 
-#[async_trait]
 impl VPath for PhysicalPath {
     type Metadata = Metadata;
     type File = PhysicalFile;
@@ -206,12 +202,12 @@ impl VPath for PhysicalPath {
         };
     }
 
-    async fn exists(&self) -> bool {
-        self.full_path.exists()
+    fn exists(&self) -> BoxFuture<'static, bool> {
+        futures_util::future::ready(self.full_path.exists()).boxed()
     }
 
-    async fn metadata(&self) -> Result<Self::Metadata> {
-        self.full_path.metadata()
+    fn metadata(&self) -> BoxFuture<'static, Result<Self::Metadata>> {
+        futures_util::future::ready(self.full_path.metadata()).boxed()
     }
 
     fn to_path_buf(&self) -> Option<PathBuf> {
@@ -222,44 +218,50 @@ impl VPath for PhysicalPath {
         Cow::from(&self.path)
     }
 
-    async fn open(&self, o: OpenOptions) -> Result<Self::File> {
-        let file = FSOpenOptions::new()
-            .write(o.write)
-            .create(o.create)
-            .read(o.read)
-            .append(o.append)
-            .truncate(o.truncate)
-            .open(&self.full_path)
-            .await?;
-        Ok(PhysicalFile(file))
+    fn open(&self, o: OpenOptions) -> BoxFuture<'static, Result<PhysicalFile>> {
+        let fp = self.full_path.clone();
+        async move {
+            let file = FSOpenOptions::new()
+                .write(o.write)
+                .create(o.create)
+                .read(o.read)
+                .append(o.append)
+                .truncate(o.truncate)
+                .open(fp)
+                .await?;
+
+            Ok(PhysicalFile(file))
+        }
+        .boxed()
     }
 
-    async fn read_dir(&self) -> Result<PhysicalReadDir> {
-        let inner = tokio::fs::read_dir(&self.full_path).await?;
-        Ok(PhysicalReadDir {
-            inner: inner,
-            root: self.root.clone(),
-        })
+    fn read_dir(&self) -> BoxFuture<'static, Result<PhysicalReadDir>> {
+        let root = self.root.clone();
+        tokio::fs::read_dir(self.full_path.clone())
+            .map(move |readdir| match readdir {
+                Ok(inner) => Ok(PhysicalReadDir { inner, root: root }),
+                Err(e) => Err(e),
+            })
+            .boxed()
     }
 
-    async fn mkdir(&self) -> Result<()> {
-        fs::create_dir_all(&self.full_path).await?;
-        Ok(())
+    fn mkdir(&self) -> BoxFuture<'static, Result<()>> {
+        fs::create_dir_all(self.full_path.clone()).boxed()
     }
 
-    async fn rm(&self) -> Result<()> {
+    fn rm(&self) -> BoxFuture<'static, Result<()>> {
         if self.full_path.is_dir() {
-            fs::remove_dir(&self.full_path).await
+            fs::remove_dir(self.full_path.clone()).boxed()
         } else {
-            fs::remove_file(&self.full_path).await
+            fs::remove_file(self.full_path.clone()).boxed()
         }
     }
 
-    async fn rm_all(&self) -> Result<()> {
+    fn rm_all(&self) -> BoxFuture<'static, Result<()>> {
         if self.full_path.is_dir() {
-            fs::remove_dir_all(&self.full_path).await
+            fs::remove_dir_all(self.full_path.clone()).boxed()
         } else {
-            fs::remove_file(&self.full_path).await
+            fs::remove_file(self.full_path.clone()).boxed()
         }
     }
 }
