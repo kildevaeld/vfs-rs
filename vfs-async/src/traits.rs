@@ -1,22 +1,22 @@
-use std::io::{Result};
-use futures_core::Stream;
 use async_trait::async_trait;
+use futures_core::Stream;
+use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
 use std::borrow::Cow;
+use std::future::Future;
+use std::io::Result;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::future::Future;
-use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
 
 use futures_util::future::BoxFuture;
 
 pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite {}
 
-pub trait VFS {
+pub trait VFS: Send + Sync {
     type Path: VPath;
     fn path(&self, path: &str) -> Self::Path;
 }
 
-pub trait VPath: Clone {
+pub trait VPath: Clone + Send + Sync {
     type Metadata: VMetadata;
     type File: VFile;
     type ReadDir: Stream<Item = Result<Self>>;
@@ -42,11 +42,11 @@ pub trait VPath: Clone {
 
     fn to_path_buf(&self) -> Option<PathBuf>;
 
-    fn open(&self, options: OpenOptions) ->  BoxFuture<'static, Result<Self::File>>;
-    fn read_dir(&self) ->  BoxFuture<'static, Result<Self::ReadDir>>;
+    fn open(&self, options: OpenOptions) -> BoxFuture<'static, Result<Self::File>>;
+    fn read_dir(&self) -> BoxFuture<'static, Result<Self::ReadDir>>;
 
     /// Create a directory at the location by this path
-    fn mkdir(&self) ->  BoxFuture<'static, Result<()>>;
+    fn mkdir(&self) -> BoxFuture<'static, Result<()>>;
     /// Remove a file
     fn rm(&self) -> BoxFuture<'static, Result<()>>;
     /// Remove a file or directory and all its contents
@@ -55,11 +55,9 @@ pub trait VPath: Clone {
     fn create(&self) -> BoxFuture<'static, Result<Self::File>> {
         self.open(OpenOptions::new().write(true).create(true).truncate(true))
     }
-    
     fn append(&self) -> BoxFuture<'static, Result<Self::File>> {
         self.open(OpenOptions::new().write(true).create(true).append(true))
     }
-
 }
 
 pub trait VMetadata {
@@ -69,7 +67,6 @@ pub trait VMetadata {
     /// Returns the length of the file at this path
     fn len(&self) -> u64;
 }
-
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct OpenOptions {

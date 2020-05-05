@@ -181,7 +181,7 @@ mod tests {
         let mut wlk = WalkDir::glob(src, Globber::new("*.toml"));
 
         while let Some(i) = wlk.next().await {
-            println!("PATH2 {:?}", i);
+            //println!("PATH2 {:?}", i);
         }
     }
 }

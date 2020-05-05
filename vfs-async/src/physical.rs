@@ -56,6 +56,8 @@ impl AsyncSeek for PhysicalFile {
         cx: &mut Context<'_>,
         pos: SeekFrom,
     ) -> Poll<Result<u64>> {
+        let this = self.project();
+
         // match self.project().0.start_seek(cx, pos) {
         //     Poll::Pending => Poll::Pending,
         //     Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
