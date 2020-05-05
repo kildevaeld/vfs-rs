@@ -1,7 +1,7 @@
 mod traits;
 // mod util;
 // mod memory;
-mod boxed;
+pub mod boxed;
 #[cfg(feature = "glob")]
 mod glob;
 mod physical;
