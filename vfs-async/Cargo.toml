@@ -12,7 +12,7 @@ futures-core = "0.3"
 futures-io = "0.3"
 futures-util = { version = "0.3", features = [ "io" ] }
 pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
-tokio = { version = "0.2", features = [ "fs" ], optional = true }
+tokio = { version = "0.2", features = [ "fs", "stream" ], optional = true }
 pin-project = "0.4"
 globset = { version = "^0.4", optional = true }
 async-stream = "0.2"
