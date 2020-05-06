@@ -9,7 +9,7 @@ use std::pin::Pin;
 
 use futures_util::future::BoxFuture;
 
-pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite {}
+pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite + Send {}
 
 pub trait VFS: Send + Sync {
     type Path: VPath;

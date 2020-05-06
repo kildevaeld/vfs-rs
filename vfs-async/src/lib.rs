@@ -1,5 +1,5 @@
 mod traits;
-// mod util;
+// pub mod util;
 // mod memory;
 pub mod boxed;
 #[cfg(feature = "glob")]
@@ -22,3 +22,5 @@ pub trait VFSExt: VFS {
         boxed::vfs_box(self)
     }
 }
+
+impl<T> VFSExt for T where T: VFS {}
