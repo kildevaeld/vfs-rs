@@ -13,6 +13,7 @@ pub use glob::*;
 pub use physical::*;
 pub use traits::*;
 pub use walk_dir::*;
+pub use walkdir::*;
 
 pub trait VFSExt: VFS {
     fn boxed(self) -> Box<dyn boxed::BVFS>
