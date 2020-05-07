@@ -58,18 +58,19 @@ where
             pin_mut!(readdir);
             while let Some(value) = readdir.next().await {
                 let value = value?;
-                if !check(&value) {
-                    continue;
-                }
                 let meta = value.metadata().await?;
                 if meta.is_file() {
-                    yield value;
+                    if check(&value) {
+                        yield value;
+                    }
                 } else {
                     let readdir = walkdir_match(value, check.clone()).await?;
                     pin_mut!(readdir);
                     while let Some(value) = readdir.next().await {
                         let value = value?;
-                        yield value;
+                        if check(&value) {
+                            yield value;
+                        }
                     }
                 }
             }
@@ -105,6 +106,18 @@ mod tests {
         let path = fs.path(".");
 
         let mut readdir = walkdir(path).await.unwrap();
+        while let Some(path) = readdir.next().await {
+            //println!("TEST TEST {:?}", path);
+        }
+    }
+
+    #[cfg(feature = "glob")]
+    #[tokio::test]
+    async fn test_glob() {
+        let fs = PhysicalFS::new("../").unwrap();
+        let path = fs.path(".");
+        println!("PATH {:?}", path);
+        let mut readdir = glob(path, Globber::new("**/*.toml")).await.unwrap();
         while let Some(path) = readdir.next().await {
             println!("TEST TEST {:?}", path);
         }

@@ -160,28 +160,28 @@ mod tests {
     use futures_util::io::AsyncReadExt;
     use futures_util::StreamExt;
 
-    #[tokio::test]
-    async fn test_stuff() {
-        let vfs = PhysicalFS::new(".").unwrap();
-        let src = vfs.path(".");
+    // #[tokio::test]
+    // async fn test_stuff() {
+    //     let vfs = PhysicalFS::new(".").unwrap();
+    //     let src = vfs.path(".");
 
-        let mut wlk = WalkDir::new(src);
+    //     let mut wlk = WalkDir::new(src);
 
-        while let Some(i) = wlk.next().await {
-            //println!("PATH {:?}", i);
-        }
-    }
+    //     while let Some(i) = wlk.next().await {
+    //         //println!("PATH {:?}", i);
+    //     }
+    // }
 
-    #[cfg(feature = "glob")]
-    #[tokio::test]
-    async fn test_glob() {
-        let vfs = PhysicalFS::new("..").unwrap();
-        let src = vfs.path(".");
+    // #[cfg(feature = "glob")]
+    // #[tokio::test]
+    // async fn test_glob() {
+    //     let vfs = PhysicalFS::new("..").unwrap();
+    //     let src = vfs.path(".");
 
-        let mut wlk = WalkDir::glob(src, Globber::new("*.toml"));
+    //     let mut wlk = WalkDir::glob(src, Globber::new("*.toml"));
 
-        while let Some(i) = wlk.next().await {
-            //println!("PATH2 {:?}", i);
-        }
-    }
+    //     while let Some(i) = wlk.next().await {
+    //         //println!("PATH2 {:?}", i);
+    //     }
+    // }
 }
