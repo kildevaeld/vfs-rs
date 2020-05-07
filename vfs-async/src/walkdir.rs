@@ -53,7 +53,10 @@ where
     V::Metadata: Send,
 {
     let out = async move {
-        let readdir = path.read_dir().await?;
+        let readdir = path.read_dir().await.map_err(|err| {
+            println!("ERROROROR {}", err);
+            err
+        })?;
         let out = try_stream! {
             pin_mut!(readdir);
             while let Some(value) = readdir.next().await {
@@ -114,7 +117,7 @@ mod tests {
     #[cfg(feature = "glob")]
     #[tokio::test]
     async fn test_glob() {
-        let fs = PhysicalFS::new("../").unwrap();
+        let fs = PhysicalFS::new("../../").unwrap();
         let path = fs.path(".");
         println!("PATH {:?}", path);
         let mut readdir = glob(path, Globber::new("**/*.toml")).await.unwrap();
