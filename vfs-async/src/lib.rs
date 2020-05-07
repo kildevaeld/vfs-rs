@@ -19,6 +19,7 @@ pub trait VFSExt: VFS {
     fn boxed(self) -> Box<dyn boxed::BVFS>
     where
         Self: Sized + 'static,
+        <Self::Path as VPath>::ReadDir: Send,
     {
         boxed::vfs_box(self)
     }

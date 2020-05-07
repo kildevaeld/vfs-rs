@@ -41,7 +41,7 @@ pub trait BVPath: Send + Sync {
     fn open(&self, options: OpenOptions) -> BoxFuture<'static, Result<Pin<Box<dyn VFile>>>>;
     fn read_dir(
         &self,
-    ) -> BoxFuture<'static, Result<Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>>>>>>;
+    ) -> BoxFuture<'static, Result<Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>>>;
 
     /// Create a directory at the location by this path
     fn mkdir(&self) -> BoxFuture<'static, Result<()>>;
@@ -69,6 +69,7 @@ struct VFSBox<V>(V);
 impl<V: VFS> BVFS for VFSBox<V>
 where
     V::Path: 'static + Send + Sync,
+    <V::Path as VPath>::ReadDir: Send,
 {
     fn path(&self, path: &str) -> Box<dyn BVPath> {
         Box::new(VPathBox(self.0.path(path)))
@@ -80,6 +81,7 @@ struct VPathBox<P>(P);
 impl<P> BVPath for VPathBox<P>
 where
     P: Send + Sync + VPath + 'static,
+    P::ReadDir: Send,
 {
     fn file_name(&self) -> Option<String> {
         self.0.file_name()
@@ -142,14 +144,13 @@ where
 
     fn read_dir(
         &self,
-    ) -> BoxFuture<'static, Result<Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>>>>>> {
+    ) -> BoxFuture<'static, Result<Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>>>
+    {
         let req = self.0.read_dir();
         Box::pin(async move {
             match req.await {
-                Ok(p) => {
-                    Ok(Box::pin(ReadDirBox(p))
-                        as Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>>>>)
-                }
+                Ok(p) => Ok(Box::pin(ReadDirBox(p))
+                    as Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>),
                 Err(err) => Err(err),
             }
         })
@@ -240,7 +241,7 @@ struct ReadDirBox<S>(#[pin] S);
 
 impl<S, P> Stream for ReadDirBox<S>
 where
-    S: Stream<Item = Result<P>>,
+    S: Stream<Item = Result<P>> + Send,
     P: VPath,
 {
     type Item = Result<Box<dyn BVPath>>;
@@ -264,7 +265,7 @@ impl Clone for Box<dyn BVPath> {
 impl VPath for Box<dyn BVPath> {
     type Metadata = Box<dyn VMetadata>;
     type File = Pin<Box<dyn VFile>>;
-    type ReadDir = Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>>>>;
+    type ReadDir = Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>;
 
     fn file_name(&self) -> Option<String> {
         self.as_ref().file_name()
@@ -348,10 +349,16 @@ impl VFS for Box<dyn BVFS> {
     }
 }
 
-pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> Box<dyn BVFS> {
+pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> Box<dyn BVFS>
+where
+    <V::Path as VPath>::ReadDir: Send,
+{
     Box::new(VFSBox(v))
 }
 
-pub fn path_box<V: VPath + 'static>(path: V) -> Box<dyn BVPath> {
+pub fn path_box<V: VPath + 'static>(path: V) -> Box<dyn BVPath>
+where
+    V::ReadDir: Send,
+{
     Box::new(VPathBox(path))
 }
