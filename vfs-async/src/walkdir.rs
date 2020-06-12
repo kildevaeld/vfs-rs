@@ -54,7 +54,7 @@ where
 {
     let out = async move {
         let readdir = path.read_dir().await.map_err(|err| {
-            println!("ERROROROR {}", err);
+            println!("ERROROROR {} {:?}", err, path.to_string());
             err
         })?;
         let out = try_stream! {
@@ -62,11 +62,7 @@ where
             while let Some(value) = readdir.next().await {
                 let value = value?;
                 let meta = value.metadata().await?;
-                if meta.is_file() {
-                    if check(&value) {
-                        yield value;
-                    }
-                } else {
+                if meta.is_dir()  {
                     let readdir = walkdir_match(value, check.clone()).await?;
                     pin_mut!(readdir);
                     while let Some(value) = readdir.next().await {
@@ -75,6 +71,12 @@ where
                             yield value;
                         }
                     }
+                } else if meta.is_file() {
+                    if check(&value) {
+                        yield value;
+                    }
+                } else {
+                    continue;
                 }
             }
         };

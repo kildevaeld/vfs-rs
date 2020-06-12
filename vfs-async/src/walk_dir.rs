@@ -172,16 +172,16 @@ mod tests {
     //     }
     // }
 
-    // #[cfg(feature = "glob")]
-    // #[tokio::test]
-    // async fn test_glob() {
-    //     let vfs = PhysicalFS::new("..").unwrap();
-    //     let src = vfs.path(".");
+    #[cfg(feature = "glob")]
+    #[tokio::test]
+    async fn test_glob() {
+        let vfs = PhysicalFS::new("..").unwrap();
+        let src = vfs.path(".");
 
-    //     let mut wlk = WalkDir::glob(src, Globber::new("*.toml"));
+        let mut wlk = WalkDir::glob(src, Globber::new("*.toml"));
 
-    //     while let Some(i) = wlk.next().await {
-    //         //println!("PATH2 {:?}", i);
-    //     }
-    // }
+        while let Some(i) = wlk.next().await {
+            //println!("PATH2 {:?}", i);
+        }
+    }
 }
