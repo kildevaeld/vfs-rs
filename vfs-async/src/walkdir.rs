@@ -54,7 +54,7 @@ where
 {
     let out = async move {
         let readdir = path.read_dir().await.map_err(|err| {
-            println!("ERROROROR {} {:?}", err, path.to_string());
+            //println!("ERROROROR {} {:?}", err, path.to_string());
             err
         })?;
         let out = try_stream! {
@@ -105,26 +105,26 @@ mod tests {
     use super::*;
     use crate::*;
 
-    #[tokio::test]
-    async fn test_walkdir() {
-        let fs = PhysicalFS::new("../").unwrap();
-        let path = fs.path(".");
+    // #[tokio::test]
+    // async fn test_walkdir() {
+    //     let fs = PhysicalFS::new("../").unwrap();
+    //     let path = fs.path(".");
 
-        let mut readdir = walkdir(path).await.unwrap();
-        while let Some(path) = readdir.next().await {
-            //println!("TEST TEST {:?}", path);
-        }
-    }
+    //     let mut readdir = walkdir(path).await.unwrap();
+    //     while let Some(path) = readdir.next().await {
+    //         //println!("TEST TEST {:?}", path);
+    //     }
+    // }
 
-    #[cfg(feature = "glob")]
-    #[tokio::test]
-    async fn test_glob() {
-        let fs = PhysicalFS::new("../../").unwrap();
-        let path = fs.path(".");
-        println!("PATH {:?}", path);
-        let mut readdir = glob(path, Globber::new("**/*.toml")).await.unwrap();
-        while let Some(path) = readdir.next().await {
-            println!("TEST TEST {:?}", path);
-        }
-    }
+    // #[cfg(feature = "glob")]
+    // #[tokio::test]
+    // async fn test_glob() {
+    //     let fs = PhysicalFS::new("../../").unwrap();
+    //     let path = fs.path(".");
+    //     println!("PATH {:?}", path);
+    //     let mut readdir = glob(path, Globber::new("**/*.toml")).await.unwrap();
+    //     while let Some(path) = readdir.next().await {
+    //         println!("TEST TEST {:?}", path);
+    //     }
+    // }
 }

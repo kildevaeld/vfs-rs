@@ -1,9 +1,9 @@
 mod traits;
 // pub mod util;
-// mod memory;
 pub mod boxed;
 #[cfg(feature = "glob")]
 mod glob;
+mod memory;
 mod physical;
 mod walk_dir;
 mod walkdir;

@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::cmp;
 
 use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
-use async_trait::async_trait;
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, IoSlice, IoSliceMut};
+use futures_util::future::{self, BoxFuture, FutureExt};
 use futures_util::stream;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -382,7 +382,6 @@ impl MemoryPath {
     }
 }
 
-#[async_trait]
 impl VPath for MemoryPath {
     type Metadata = MemoryMetadata;
     type File = MemoryFile;
@@ -412,12 +411,16 @@ impl VPath for MemoryPath {
         return MemoryPath::new(&self.fs, new_path);
     }
 
-    async fn exists(&self) -> bool {
-        return self.with_node(|_node| ()).is_ok();
+    fn exists(&self) -> BoxFuture<'static, bool> {
+        future::ready(self.with_node(|_node| ()).is_ok()).boxed()
     }
 
-    async fn metadata(&self) -> Result<MemoryMetadata> {
-        return self.with_node(FsNode::metadata)?;
+    fn metadata(&self) -> BoxFuture<'static, Result<MemoryMetadata>> {
+        match self.with_node(FsNode::metadata) {
+            Ok(o) => future::ready(o),
+            Err(e) => future::err(e),
+        }
+        .boxed()
     }
 
     fn to_string(&self) -> std::borrow::Cow<str> {
@@ -428,49 +431,54 @@ impl VPath for MemoryPath {
         None
     }
 
-    async fn open(&self, options: OpenOptions) -> Result<Self::File> {
-        self.open_with_options(&options)
+    fn open(&self, options: OpenOptions) -> BoxFuture<'static, Result<Self::File>> {
+        future::ready(self.open_with_options(&options)).boxed()
     }
 
-    async fn read_dir(&self) -> Result<Self::ReadDir> {
+    fn read_dir(&self) -> BoxFuture<'static, Result<Self::ReadDir>> {
         let children = self.with_node(|node| {
             let children: Vec<_> = node
                 .children
                 .keys()
                 .map(|name| Ok(MemoryPath::new(&self.fs, self.path.clone() + "/" + name)))
                 .collect();
-            return children;
-        })?;
-        return Ok(stream::iter(children.into_iter()));
+            children
+        });
+        match children {
+            Ok(children) => future::ok(stream::iter(children.into_iter())),
+            Err(e) => future::err(e),
+        }
+        .boxed()
     }
 
-    async fn mkdir(&self) -> Result<()> {
+    fn mkdir(&self) -> BoxFuture<'static, Result<()>> {
         let root = &mut self.fs.write().unwrap().root;
         let mut components: Vec<&str> = self.path.split("/").collect();
         components.reverse();
         components.pop();
-        traverse_mkdir(root, &mut components)
+        future::ready(traverse_mkdir(root, &mut components)).boxed()
     }
 
-    async fn rm(&self) -> Result<()> {
+    fn rm(&self) -> BoxFuture<'static, Result<()>> {
         let parent_path = match self.parent_internal() {
             None => {
-                return Err(Error::new(
+                return future::err(Error::new(
                     ErrorKind::Other,
                     format!("File is not a file: {:?}", self.file_name()),
-                ));
+                ))
+                .boxed();
             }
             Some(parent) => parent,
         };
-        parent_path.with_node(|node| {
+        future::ready(parent_path.with_node(|node| {
             let file_name = self.file_name().unwrap();
             node.children.remove(&file_name);
-        })?;
-        Ok(())
+        }))
+        .boxed()
     }
 
-    async fn rm_all(&self) -> Result<()> {
-        self.rm().await
+    fn rm_all(&self) -> BoxFuture<'static, Result<()>> {
+        self.rm()
     }
 }
 
@@ -488,9 +496,9 @@ impl PartialEq for MemoryPath {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Result, Seek, SeekFrom, Write};
-    use futures_util::StreamExt;
     use super::*;
+    use futures_util::StreamExt;
+    use std::io::{Read, Result, Seek, SeekFrom, Write};
     use VPath;
     use {VMetadata, VFS};
 
@@ -501,19 +509,26 @@ mod tests {
         assert!(!path.exists().await, "Path should not exist");
         path.mkdir().await.unwrap();
         assert!(path.exists().await, "Path should exist now");
-        assert!(path.metadata().await.unwrap().is_dir(), "Path should be dir");
+        assert!(
+            path.metadata().await.unwrap().is_dir(),
+            "Path should be dir"
+        );
         assert!(
             !path.metadata().await.unwrap().is_file(),
             "Path should be not be a file"
         );
-        assert!(path.metadata().await.unwrap().len() == 0, "Path size should be 0");
+        assert!(
+            path.metadata().await.unwrap().len() == 0,
+            "Path size should be 0"
+        );
     }
 
     #[tokio::test]
     async fn mkdir_fails_for_file() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true)).await
+        path.open(OpenOptions::new().write(true).create(true).truncate(true))
+            .await
             .unwrap();
         assert!(path.mkdir().await.is_err(), "Path should not be created");
     }
@@ -522,7 +537,8 @@ mod tests {
     async fn read_empty_file() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true)).await
+        path.open(OpenOptions::new().write(true).create(true).truncate(true))
+            .await
             .unwrap();
         let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
         let mut string: String = "".to_owned();
@@ -534,7 +550,8 @@ mod tests {
     async fn rm() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true)).await
+        path.open(OpenOptions::new().write(true).create(true).truncate(true))
+            .await
             .unwrap();
         path.rm().await.unwrap();
         assert!(!path.exists().await);
@@ -555,7 +572,8 @@ mod tests {
         let dir = fs.path("/foo");
         dir.mkdir().await.unwrap();
         let path = fs.path("/foo/bar.txt");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true)).await
+        path.open(OpenOptions::new().write(true).create(true).truncate(true))
+            .await
             .unwrap();
         dir.rm_all().await.unwrap();
         assert!(!path.exists().await);
@@ -567,8 +585,18 @@ mod tests {
         let fs = MemoryFS::new();
         let path = fs.path("/foo");
         path.mkdir().await.unwrap();
-        assert!(path.open(OpenOptions::new().write(true).create(true).truncate(true)).await.is_err(), "Directory should not be openable");
-        assert!(path.open(OpenOptions::new().write(true).create(true).append(true)).await.is_err(), "Directory should not be openable");
+        assert!(
+            path.open(OpenOptions::new().write(true).create(true).truncate(true))
+                .await
+                .is_err(),
+            "Directory should not be openable"
+        );
+        assert!(
+            path.open(OpenOptions::new().write(true).create(true).append(true))
+                .await
+                .is_err(),
+            "Directory should not be openable"
+        );
         assert!(
             path.open(OpenOptions::new().read(true)).await.is_err(),
             "Directory should not be openable"
@@ -581,7 +609,8 @@ mod tests {
         let path = fs.path("/foobar.txt");
         {
             let mut file = path
-                .open(OpenOptions::new().write(true).create(true).truncate(true)).await
+                .open(OpenOptions::new().write(true).create(true).truncate(true))
+                .await
                 .unwrap();
             write!(file, "Hello world").unwrap();
             write!(file, "!").unwrap();
@@ -612,7 +641,8 @@ mod tests {
         }
         {
             let _file = path
-                .open(OpenOptions::new().write(true).create(true).truncate(true)).await
+                .open(OpenOptions::new().write(true).create(true).truncate(true))
+                .await
                 .unwrap();
         }
         {
@@ -628,7 +658,10 @@ mod tests {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
         {
-            let mut file = path.open(OpenOptions::new().write(true).create(true).append(true)).await.unwrap();
+            let mut file = path
+                .open(OpenOptions::new().write(true).create(true).append(true))
+                .await
+                .unwrap();
             write!(file, "Hello").unwrap();
             write!(file, " world").unwrap();
         }
@@ -639,7 +672,10 @@ mod tests {
             assert_eq!(string, "Hello world");
         }
         {
-            let mut file = path.open(OpenOptions::new().write(true).create(true).append(true)).await.unwrap();
+            let mut file = path
+                .open(OpenOptions::new().write(true).create(true).append(true))
+                .await
+                .unwrap();
             write!(file, "!").unwrap();
         }
         {
@@ -681,14 +717,18 @@ mod tests {
         let path2 = fs.path("/foo/bar");
         let path3 = fs.path("/foo/baz");
         path2.mkdir().await.unwrap();
-        path3.open(OpenOptions::new().write(true).create(true).truncate(true)).await.unwrap();
+        path3
+            .open(OpenOptions::new().write(true).create(true).truncate(true))
+            .await
+            .unwrap();
         let mut entries: Vec<String> = path
             .read_dir()
             .await
             .unwrap()
             .map(Result::unwrap)
             .map(|path| path.to_string().into_owned())
-            .collect().await;
+            .collect()
+            .await;
         entries.sort();
         assert_eq!(entries, vec!["/foo/bar".to_owned(), "/foo/baz".to_owned()]);
     }
@@ -702,7 +742,7 @@ mod tests {
         assert_eq!(path.parent().unwrap().extension(), None);
     }
 
-    #[tokio::test]    
+    #[tokio::test]
     async fn path_buf() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo/bar.txt");
