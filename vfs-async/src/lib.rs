@@ -10,6 +10,7 @@ mod walkdir;
 
 #[cfg(feature = "glob")]
 pub use glob::*;
+pub use memory::*;
 pub use physical::*;
 pub use traits::*;
 pub use walk_dir::*;
