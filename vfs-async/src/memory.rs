@@ -397,7 +397,7 @@ impl VPath for MemoryPath {
 
     fn extension(&self) -> Option<String> {
         match self.file_name() {
-            Some(name) => pathutils::extname(name),
+            Some(name) => pathutils::extname(&name).map(|m| m.to_string()),
             None => None,
         }
     }

@@ -1,5 +1,4 @@
-use super::traits::{VPath, VMetadata, VFS, VFile, OpenOptions
-};
+use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
 use pathutils;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
@@ -10,7 +9,6 @@ use std::fs::{
 use std::io::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
 
 impl VFile for std::fs::File {}
 
@@ -117,14 +115,14 @@ impl VPath for PhysicalPath {
 
     fn file_name(&self) -> Option<String> {
         match pathutils::filename(&self.path) {
-            Some(name) => Some(name),
+            Some(name) => Some(name.to_string()),
             None => None,
         }
     }
 
     fn extension(&self) -> Option<String> {
         match pathutils::extname(&self.path) {
-            Some(name) => Some(name),
+            Some(name) => Some(name.to_string()),
             None => None,
         }
     }
@@ -166,8 +164,13 @@ impl VPath for PhysicalPath {
     }
 
     fn open(&self, o: OpenOptions) -> Result<File> {
-        FSOpenOptions::new().write(o.write).create(o.create).read(o.read).append(o.append).truncate(o.truncate).open(&self.full_path)
-      
+        FSOpenOptions::new()
+            .write(o.write)
+            .create(o.create)
+            .read(o.read)
+            .append(o.append)
+            .truncate(o.truncate)
+            .open(&self.full_path)
     }
 
     fn read_dir(&self) -> Result<PhysicalReadDir> {
@@ -176,7 +179,6 @@ impl VPath for PhysicalPath {
             root: self.root.clone(),
         })
     }
-
 
     // fn create(&self, options: OpenOptions) -> Result<File> {
     //     File::create(&self.full_path)
@@ -208,8 +210,6 @@ impl VPath for PhysicalPath {
             remove_file(&self.full_path)
         }
     }
-
-
 }
 
 impl Debug for PhysicalPath {
@@ -221,8 +221,6 @@ impl Debug for PhysicalPath {
         )
     }
 }
-
-
 
 #[derive(Debug)]
 pub struct PhysicalReadDir {
@@ -256,14 +254,17 @@ mod tests {
     use std::io::{Read, Result};
     use std::path::PathBuf;
 
-    use super::{VPath, OpenOptions};
     use super::*;
+    use super::{OpenOptions, VPath};
 
     #[test]
     fn to_string() {
         let vfs = PhysicalFS::new(".").unwrap();
         let path = vfs.path("./src/boxed.rs");
-        assert_eq!(path.to_string(), std::borrow::Cow::Borrowed("/src/boxed.rs"));
+        assert_eq!(
+            path.to_string(),
+            std::borrow::Cow::Borrowed("/src/boxed.rs")
+        );
     }
 
     #[test]
@@ -327,5 +328,4 @@ mod tests {
     //     let src = vfs.path("./src/lib.rs");
     //     //assert_eq!(Some(src.clone()), src.to_path_buf());
     // }
-
 }

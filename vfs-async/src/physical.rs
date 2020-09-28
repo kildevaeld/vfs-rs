@@ -172,14 +172,14 @@ impl VPath for PhysicalPath {
 
     fn file_name(&self) -> Option<String> {
         match pathutils::filename(&self.path) {
-            Some(name) => Some(name),
+            Some(name) => Some(name.to_string()),
             None => None,
         }
     }
 
     fn extension(&self) -> Option<String> {
         match pathutils::extname(&self.path) {
-            Some(name) => Some(name),
+            Some(name) => Some(name.to_string()),
             None => None,
         }
     }

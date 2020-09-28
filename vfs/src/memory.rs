@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use std::cmp;
 
-use super::{OpenOptions, VMetadata, VPath, VFS, VFile};
+use super::{OpenOptions, VFile, VMetadata, VPath, VFS};
 
 pub type Filename = String;
 
@@ -144,7 +144,6 @@ impl Seek for MemoryFile {
             }
             SeekFrom::Current(n) => self.pos as i64 + n,
         };
-    
         if pos < 0 {
             Err(Error::new(
                 ErrorKind::InvalidInput,
@@ -324,7 +323,6 @@ impl VPath for MemoryPath {
     type File = MemoryFile;
     type Iterator = <Vec<Result<MemoryPath>> as IntoIterator>::IntoIter;
 
-
     fn parent(&self) -> Option<MemoryPath> {
         self.parent_internal()
     }
@@ -335,9 +333,7 @@ impl VPath for MemoryPath {
 
     fn extension(&self) -> Option<String> {
         match self.file_name() {
-            Some(name) => {
-                pathutils::extname(name)
-            }
+            Some(name) => pathutils::extname(&name).map(|m| m.to_string()),
             None => None,
         }
     }
@@ -504,7 +500,10 @@ mod tests {
         path.mkdir().unwrap();
         assert!(path.create().is_err(), "Directory should not be openable");
         assert!(path.append().is_err(), "Directory should not be openable");
-        assert!(path.open(OpenOptions::new().read(true)).is_err(), "Directory should not be openable");
+        assert!(
+            path.open(OpenOptions::new().read(true)).is_err(),
+            "Directory should not be openable"
+        );
     }
 
     #[test]
