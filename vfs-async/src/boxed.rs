@@ -283,10 +283,6 @@ impl VPath for Box<dyn BVPath> {
         self.as_ref().to_string()
     }
 
-    // fn to_path_buf(&self) -> Option<PathBuf> {
-    //     self.as_ref().to_path_buf()
-    // }
-
     async fn open(&self, options: OpenOptions) -> Result<Self::File> {
         self.as_ref().open(options).await
     }
