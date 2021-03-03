@@ -69,7 +69,7 @@ impl VFS for PhysicalFS {
                 full_path: PathBuf::from(fp),
             };
         }
-        let path = pathutils::resolve("/", path).unwrap(); // format!("/{}", path);
+        let path = pathutils::resolve("/", path).unwrap();
 
         PhysicalPath {
             root: self.root.clone(),
@@ -89,7 +89,7 @@ pub struct PhysicalPath {
 #[async_trait]
 impl VPath for PhysicalPath {
     type Metadata = Metadata;
-    type File = File; //PhysicalFile;
+    type File = File;
     type ReadDir = PhysicalReadDir;
 
     fn parent(&self) -> Option<Self> {
@@ -254,7 +254,7 @@ impl Stream for PhysicalReadDir {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Result};
+    use std::io::Result;
     use std::path::PathBuf;
 
     use super::*;

@@ -49,14 +49,6 @@ pub trait VPath: Clone + Send + Sync {
     async fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
     async fn rm_all(&self) -> Result<()>;
-
-    // async fn create(&self) -> Result<Self::File> {
-    //     self.open(OpenOptions::new().write(true).create(true).truncate(true))
-    // }
-
-    // async fn append(&self) -> Result<Self::File> {
-    //     self.open(OpenOptions::new().write(true).create(true).append(true))
-    // }
 }
 
 pub trait VMetadata {
