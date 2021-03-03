@@ -1,7 +1,10 @@
 #[cfg(feature = "boxed")]
 pub mod boxed;
+#[cfg(feature = "memory")]
 mod memory;
 mod traits;
+
+pub use memory::*;
 pub use traits::*;
 
 pub trait VFSExt: VFS {

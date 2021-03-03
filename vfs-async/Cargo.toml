@@ -11,10 +11,14 @@ async-trait = "0.1"
 futures = { version = "0.3", default-features = false, features = [ "std" ] }
 pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
 pin-project = { version = "1", optional = true }
-async-lock = { version = "2", optional = true }
+async-fs = { version = "1", optional = true }
+
+[dev-dependencies]
+futures = { version = "0.3", default-features = false, features = [ "std", "executor" ] }
 
 
 [features]
 default = [ "boxed", "memory" ]
 boxed = [ "pin-project" ]
-memory = [ "async-lock" ]
+memory = [  ]
+fs = [ "async-fs" ]
