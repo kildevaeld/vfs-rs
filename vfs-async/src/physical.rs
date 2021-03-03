@@ -2,7 +2,7 @@ use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
 use async_fs::{File, OpenOptions as FSOpenOptions};
 use async_trait::async_trait;
 use blocking::unblock;
-use futures::{FutureExt, Stream};
+use futures_lite::Stream;
 use pathutils;
 use pin_project::pin_project;
 use std::borrow::Cow;
@@ -181,12 +181,10 @@ impl VPath for PhysicalPath {
 
     async fn read_dir(&self) -> Result<PhysicalReadDir> {
         let root = self.root.clone();
-        async_fs::read_dir(&self.full_path)
-            .map(move |readdir| match readdir {
-                Ok(inner) => Ok(PhysicalReadDir { inner, root: root }),
-                Err(e) => Err(e),
-            })
-            .await
+
+        let inner = async_fs::read_dir(&self.full_path).await?;
+
+        Ok(PhysicalReadDir { inner, root: root })
     }
 
     async fn create_dir(&self) -> Result<()> {

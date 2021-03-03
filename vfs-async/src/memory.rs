@@ -2,8 +2,8 @@
 
 use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
 use async_trait::async_trait;
-use futures::{
-    io::{AsyncRead, AsyncSeek, AsyncWrite, IoSlice, IoSliceMut},
+use futures_lite::{
+    io::{AsyncRead, AsyncSeek, AsyncWrite},
     stream,
 };
 use std;
@@ -11,7 +11,7 @@ use std::cmp;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::io::{self, Read, Result, Seek, SeekFrom, Write};
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, IoSlice, IoSliceMut};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::Arc;

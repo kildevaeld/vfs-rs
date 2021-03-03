@@ -8,11 +8,12 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1"
-futures = { version = "0.3", default-features = false, features = [ "std" ] }
+# futures = { version = "0.3", default-features = false, features = [ "std" ] }
 pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
 pin-project = { version = "1", optional = true }
 async-fs = { version = "1", optional = true }
 blocking = { version = "1", optional = true }
+futures-lite = "1"
 
 [dev-dependencies]
 futures = { version = "0.3", default-features = false, features = [ "std", "executor" ] }

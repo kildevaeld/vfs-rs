@@ -1,6 +1,6 @@
 use crate::{OpenOptions, VFile, VMetadata, VPath, VFS};
 use async_trait::async_trait;
-use futures::{
+use futures_lite::{
     io::{AsyncRead, AsyncSeek, AsyncWrite, SeekFrom},
     ready, Stream,
 };
