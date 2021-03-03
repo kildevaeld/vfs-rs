@@ -8,19 +8,13 @@ edition = "2018"
 
 [dependencies]
 async-trait = "0.1"
-futures-core = "0.3"
-futures-io = "0.3"
-futures-util = { version = "0.3", features = [ "io" ] }
+futures = { version = "0.3", default-features = false, features = [ "std" ] }
 pathutils = { git = "https://github.com/kildevaeld/pathutils-rs.git" }
-tokio = { version = "0.2", features = [ "fs", "stream" ], optional = true }
-pin-project = "0.4"
-globset = { version = "^0.4", optional = true }
-async-stream = "0.2"
+pin-project = { version = "1", optional = true }
+async-lock = { version = "2", optional = true }
+
 
 [features]
-default = [ "tokio", "glob" ]
-glob = ["globset", "pathutils/glob"]
-
-
-[dev-dependencies]
-tokio = { version = "0.2", features = [ "full" ] }
+default = [ "boxed", "memory" ]
+boxed = [ "pin-project" ]
+memory = [ "async-lock" ]

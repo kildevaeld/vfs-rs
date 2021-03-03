@@ -1,13 +1,10 @@
 use async_trait::async_trait;
-use futures_core::Stream;
-use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
+use futures::{
+    io::{AsyncRead, AsyncSeek, AsyncWrite},
+    Stream,
+};
 use std::borrow::Cow;
-use std::future::Future;
 use std::io::Result;
-use std::path::PathBuf;
-use std::pin::Pin;
-
-use futures_util::future::BoxFuture;
 
 pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite + Send {}
 
@@ -16,6 +13,7 @@ pub trait VFS: Send + Sync {
     fn path(&self, path: &str) -> Self::Path;
 }
 
+#[async_trait]
 pub trait VPath: Clone + Send + Sync {
     type Metadata: VMetadata;
     type File: VFile;
@@ -33,31 +31,32 @@ pub trait VPath: Clone + Send + Sync {
     fn parent(&self) -> Option<Self>;
 
     /// Check if the file existst
-    fn exists(&self) -> BoxFuture<'static, bool>;
+    async fn exists(&self) -> bool;
 
     /// Get the file's metadata
-    fn metadata(&self) -> BoxFuture<'static, Result<Self::Metadata>>;
+    async fn metadata(&self) -> Result<Self::Metadata>;
 
     fn to_string(&self) -> Cow<str>;
 
-    fn to_path_buf(&self) -> Option<PathBuf>;
+    // fn to_path_buf(&self) -> Option<PathBuf>;
 
-    fn open(&self, options: OpenOptions) -> BoxFuture<'static, Result<Self::File>>;
-    fn read_dir(&self) -> BoxFuture<'static, Result<Self::ReadDir>>;
+    async fn open(&self, options: OpenOptions) -> Result<Self::File>;
+    async fn read_dir(&self) -> Result<Self::ReadDir>;
 
     /// Create a directory at the location by this path
-    fn mkdir(&self) -> BoxFuture<'static, Result<()>>;
+    async fn create_dir(&self) -> Result<()>;
     /// Remove a file
-    fn rm(&self) -> BoxFuture<'static, Result<()>>;
+    async fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
-    fn rm_all(&self) -> BoxFuture<'static, Result<()>>;
+    async fn rm_all(&self) -> Result<()>;
 
-    fn create(&self) -> BoxFuture<'static, Result<Self::File>> {
-        self.open(OpenOptions::new().write(true).create(true).truncate(true))
-    }
-    fn append(&self) -> BoxFuture<'static, Result<Self::File>> {
-        self.open(OpenOptions::new().write(true).create(true).append(true))
-    }
+    // async fn create(&self) -> Result<Self::File> {
+    //     self.open(OpenOptions::new().write(true).create(true).truncate(true))
+    // }
+
+    // async fn append(&self) -> Result<Self::File> {
+    //     self.open(OpenOptions::new().write(true).create(true).append(true))
+    // }
 }
 
 pub trait VMetadata {

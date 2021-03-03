@@ -1,20 +1,8 @@
-mod traits;
-// pub mod util;
+#[cfg(feature = "boxed")]
 pub mod boxed;
-#[cfg(feature = "glob")]
-mod glob;
 mod memory;
-mod physical;
-mod walk_dir;
-mod walkdir;
-
-#[cfg(feature = "glob")]
-pub use glob::*;
-pub use memory::*;
-pub use physical::*;
+mod traits;
 pub use traits::*;
-pub use walk_dir::*;
-pub use walkdir::*;
 
 pub trait VFSExt: VFS {
     fn boxed(self) -> Box<dyn boxed::BVFS>

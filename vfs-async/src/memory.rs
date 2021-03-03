@@ -1,23 +1,22 @@
 //! An ephemeral in-memory file system, intended mainly for unit tests
 
+use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
+use async_trait::async_trait;
+use futures::{
+    io::{AsyncRead, AsyncSeek, AsyncWrite, IoSlice, IoSliceMut},
+    stream,
+};
 use std;
+use std::cmp;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::io::{self, Read, Result, Seek, SeekFrom, Write};
 use std::io::{Error, ErrorKind};
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::RwLock;
-
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-
-use std::cmp;
-
-use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
-use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, IoSlice, IoSliceMut};
-use futures_util::future::{self, BoxFuture, FutureExt};
-use futures_util::stream;
 use std::pin::Pin;
+use std::sync::Arc;
+// use std::sync::RwLock;
+use async_lock::RwLock;
 use std::task::{Context, Poll};
 
 pub type Filename = String;
@@ -61,10 +60,10 @@ impl FsNode {
         }
     }
 
-    fn metadata(&mut self) -> Result<MemoryMetadata> {
+    async fn metadata(&mut self) -> Result<MemoryMetadata> {
         Ok(MemoryMetadata {
             kind: self.kind.clone(),
-            len: self.data.0.read().unwrap().len() as u64,
+            len: self.data.0.read().await.len() as u64,
         })
     }
 }
@@ -100,7 +99,7 @@ pub struct MemoryFile {
 
 impl Read for MemoryFile {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let data = self.data.0.write().unwrap();
+        let data = self.data.0.write().await;
         let n = (&data.deref()[self.pos as usize..]).read(buf)?;
         self.pos += n as u64;
         Ok(n)
@@ -259,8 +258,8 @@ impl MemoryPath {
         };
     }
 
-    fn with_node<R, F: FnOnce(&mut FsNode) -> R>(&self, f: F) -> Result<R> {
-        let root = &mut self.fs.write().unwrap().root;
+    async fn with_node<R, F: FnOnce(&mut FsNode) -> R>(&self, f: F) -> Result<R> {
+        let root = &mut self.fs.write().await.root;
         let mut components: Vec<&str> = self.path.split("/").collect();
         components.reverse();
         components.pop();
@@ -382,6 +381,7 @@ impl MemoryPath {
     }
 }
 
+#[async_trait]
 impl VPath for MemoryPath {
     type Metadata = MemoryMetadata;
     type File = MemoryFile;
@@ -411,74 +411,74 @@ impl VPath for MemoryPath {
         return MemoryPath::new(&self.fs, new_path);
     }
 
-    fn exists(&self) -> BoxFuture<'static, bool> {
-        future::ready(self.with_node(|_node| ()).is_ok()).boxed()
+    async fn exists(&self) -> bool {
+        self.with_node(|_node| ()).await.is_ok()
     }
 
-    fn metadata(&self) -> BoxFuture<'static, Result<MemoryMetadata>> {
-        match self.with_node(FsNode::metadata) {
-            Ok(o) => future::ready(o),
-            Err(e) => future::err(e),
+    async fn metadata(&self) -> Result<MemoryMetadata> {
+        match self.with_node(FsNode::metadata).await {
+            Ok(o) => o.await,
+            Err(e) => Err(e),
         }
-        .boxed()
     }
 
     fn to_string(&self) -> std::borrow::Cow<str> {
         std::borrow::Cow::Owned(self.path.clone())
     }
 
-    fn to_path_buf(&self) -> Option<PathBuf> {
-        None
+    // fn to_path_buf(&self) -> Option<PathBuf> {
+    //     None
+    // }
+
+    async fn open(&self, options: OpenOptions) -> Result<Self::File> {
+        self.open_with_options(&options)
     }
 
-    fn open(&self, options: OpenOptions) -> BoxFuture<'static, Result<Self::File>> {
-        future::ready(self.open_with_options(&options)).boxed()
-    }
-
-    fn read_dir(&self) -> BoxFuture<'static, Result<Self::ReadDir>> {
-        let children = self.with_node(|node| {
-            let children: Vec<_> = node
-                .children
-                .keys()
-                .map(|name| Ok(MemoryPath::new(&self.fs, self.path.clone() + "/" + name)))
-                .collect();
-            children
-        });
+    async fn read_dir(&self) -> Result<Self::ReadDir> {
+        let children = self
+            .with_node(|node| {
+                let children: Vec<_> = node
+                    .children
+                    .keys()
+                    .map(|name| Ok(MemoryPath::new(&self.fs, self.path.clone() + "/" + name)))
+                    .collect();
+                children
+            })
+            .await;
         match children {
-            Ok(children) => future::ok(stream::iter(children.into_iter())),
-            Err(e) => future::err(e),
+            Ok(children) => Ok(stream::iter(children.into_iter())),
+            Err(e) => Err(e),
         }
-        .boxed()
     }
 
-    fn mkdir(&self) -> BoxFuture<'static, Result<()>> {
-        let root = &mut self.fs.write().unwrap().root;
+    async fn create_dir(&self) -> Result<()> {
+        let root = &mut self.fs.write().await.root;
         let mut components: Vec<&str> = self.path.split("/").collect();
         components.reverse();
         components.pop();
-        future::ready(traverse_mkdir(root, &mut components)).boxed()
+        traverse_mkdir(root, &mut components)
     }
 
-    fn rm(&self) -> BoxFuture<'static, Result<()>> {
+    async fn rm(&self) -> Result<()> {
         let parent_path = match self.parent_internal() {
             None => {
-                return future::err(Error::new(
+                return Err(Error::new(
                     ErrorKind::Other,
                     format!("File is not a file: {:?}", self.file_name()),
                 ))
-                .boxed();
             }
             Some(parent) => parent,
         };
-        future::ready(parent_path.with_node(|node| {
-            let file_name = self.file_name().unwrap();
-            node.children.remove(&file_name);
-        }))
-        .boxed()
+        parent_path
+            .with_node(|node| {
+                let file_name = self.file_name().unwrap();
+                node.children.remove(&file_name);
+            })
+            .await
     }
 
-    fn rm_all(&self) -> BoxFuture<'static, Result<()>> {
-        self.rm()
+    async fn rm_all(&self) -> Result<()> {
+        self.rm().await
     }
 }
 
