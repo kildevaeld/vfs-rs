@@ -14,6 +14,10 @@ pub trait BVFS: Sync + Send {
     fn path(&self, path: &str) -> Box<dyn BVPath>;
 }
 
+pub type BVFSBox = Box<dyn BVFS>;
+
+pub type BVPathBox = Box<dyn BVPath>;
+
 #[async_trait]
 pub trait BVPath: Send + Sync {
     fn file_name(&self) -> Option<String>;
