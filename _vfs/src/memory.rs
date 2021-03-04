@@ -1,22 +1,19 @@
 //! An ephemeral in-memory file system, intended mainly for unit tests
 
-use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
-use async_trait::async_trait;
-use futures_lite::{
-    io::{AsyncRead, AsyncSeek, AsyncWrite},
-    stream,
-};
 use std;
-use std::cmp;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::io::{self, Read, Result, Seek, SeekFrom, Write};
-use std::io::{Error, ErrorKind, IoSlice, IoSliceMut};
+use std::io::{Error, ErrorKind};
+use std::io::{Read, Result, Seek, SeekFrom, Write};
 use std::ops::{Deref, DerefMut};
-use std::pin::Pin;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::task::{Context, Poll};
+
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+
+use std::cmp;
+
+use super::{OpenOptions, VFile, VMetadata, VPath, VFS};
 
 pub type Filename = String;
 
@@ -105,29 +102,6 @@ impl Read for MemoryFile {
     }
 }
 
-impl AsyncRead for MemoryFile {
-    #[cfg(feature = "read-initializer")]
-    unsafe fn initializer(&self) -> Initializer {
-        io::Read::initializer(self)
-    }
-
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<Result<usize>> {
-        Poll::Ready(io::Read::read(&mut *self, buf))
-    }
-
-    fn poll_read_vectored(
-        mut self: Pin<&mut Self>,
-        _: &mut Context<'_>,
-        bufs: &mut [IoSliceMut<'_>],
-    ) -> Poll<Result<usize>> {
-        Poll::Ready(io::Read::read_vectored(&mut *self, bufs))
-    }
-}
-
 impl Write for MemoryFile {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         let mut guard = self.data.0.write().unwrap();
@@ -155,32 +129,6 @@ impl Write for MemoryFile {
     }
 }
 
-impl AsyncWrite for MemoryFile {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize>> {
-        Poll::Ready(Write::write(&mut *self, buf))
-    }
-
-    fn poll_write_vectored(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        bufs: &[IoSlice<'_>],
-    ) -> Poll<Result<usize>> {
-        Poll::Ready(Write::write_vectored(&mut *self, bufs))
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Poll::Ready(Write::flush(&mut *self))
-    }
-
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-}
-
 impl VFile for MemoryFile {}
 
 impl Seek for MemoryFile {
@@ -205,16 +153,6 @@ impl Seek for MemoryFile {
             self.pos = pos as u64;
             Ok(self.pos)
         }
-    }
-}
-
-impl AsyncSeek for MemoryFile {
-    fn poll_seek(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        pos: SeekFrom,
-    ) -> Poll<Result<u64>> {
-        Poll::Ready(Seek::seek(&mut *self, pos))
     }
 }
 
@@ -380,11 +318,10 @@ impl MemoryPath {
     }
 }
 
-#[async_trait]
 impl VPath for MemoryPath {
     type Metadata = MemoryMetadata;
     type File = MemoryFile;
-    type ReadDir = stream::Iter<<Vec<Result<MemoryPath>> as IntoIterator>::IntoIter>;
+    type Iterator = <Vec<Result<MemoryPath>> as IntoIterator>::IntoIter;
 
     fn parent(&self) -> Option<MemoryPath> {
         self.parent_internal()
@@ -410,45 +347,39 @@ impl VPath for MemoryPath {
         return MemoryPath::new(&self.fs, new_path);
     }
 
-    async fn exists(&self) -> bool {
-        self.with_node(|_node| ()).is_ok()
+    fn exists(&self) -> bool {
+        return self.with_node(|_node| ()).is_ok();
     }
 
-    async fn metadata(&self) -> Result<MemoryMetadata> {
-        match self.with_node(FsNode::metadata) {
-            Ok(o) => o,
-            Err(e) => Err(e),
-        }
+    fn metadata(&self) -> Result<MemoryMetadata> {
+        return self.with_node(FsNode::metadata)?;
     }
 
     fn to_string(&self) -> std::borrow::Cow<str> {
         std::borrow::Cow::Owned(self.path.clone())
     }
 
-    // fn to_path_buf(&self) -> Option<PathBuf> {
-    //     None
-    // }
+    fn to_path_buf(&self) -> Option<PathBuf> {
+        None
+    }
 
-    async fn open(&self, options: OpenOptions) -> Result<Self::File> {
+    fn open(&self, options: OpenOptions) -> Result<Self::File> {
         self.open_with_options(&options)
     }
 
-    async fn read_dir(&self) -> Result<Self::ReadDir> {
+    fn read_dir(&self) -> Result<Self::Iterator> {
         let children = self.with_node(|node| {
             let children: Vec<_> = node
                 .children
                 .keys()
                 .map(|name| Ok(MemoryPath::new(&self.fs, self.path.clone() + "/" + name)))
                 .collect();
-            children
-        });
-        match children {
-            Ok(children) => Ok(stream::iter(children.into_iter())),
-            Err(e) => Err(e),
-        }
+            return children;
+        })?;
+        return Ok(children.into_iter());
     }
 
-    async fn create_dir(&self) -> Result<()> {
+    fn mkdir(&self) -> Result<()> {
         let root = &mut self.fs.write().unwrap().root;
         let mut components: Vec<&str> = self.path.split("/").collect();
         components.reverse();
@@ -456,24 +387,25 @@ impl VPath for MemoryPath {
         traverse_mkdir(root, &mut components)
     }
 
-    async fn rm(&self) -> Result<()> {
+    fn rm(&self) -> Result<()> {
         let parent_path = match self.parent_internal() {
             None => {
                 return Err(Error::new(
                     ErrorKind::Other,
                     format!("File is not a file: {:?}", self.file_name()),
-                ))
+                ));
             }
             Some(parent) => parent,
         };
         parent_path.with_node(|node| {
             let file_name = self.file_name().unwrap();
             node.children.remove(&file_name);
-        })
+        })?;
+        Ok(())
     }
 
-    async fn rm_all(&self) -> Result<()> {
-        self.rm().await
+    fn rm_all(&self) -> Result<()> {
+        self.rm()
     }
 }
 
@@ -491,205 +423,161 @@ impl PartialEq for MemoryPath {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Read, Result, Seek, SeekFrom, Write};
+
     use super::*;
-    use futures::executor::block_on;
-    // use futures::StreamExt;
-    // use std::io::{Read, Result, Seek, SeekFrom, Write};
     use VPath;
     use {VMetadata, VFS};
 
     #[test]
     fn mkdir() {
-        block_on(async move {
-            let fs = MemoryFS::new();
-            let path = fs.path("/foo/bar/baz");
-            assert!(!path.exists().await, "Path should not exist");
-            path.create_dir().await.unwrap();
-            assert!(path.exists().await, "Path should exist now");
-            assert!(
-                path.metadata().await.unwrap().is_dir(),
-                "Path should be dir"
-            );
-            assert!(
-                !path.metadata().await.unwrap().is_file(),
-                "Path should be not be a file"
-            );
-            assert!(
-                path.metadata().await.unwrap().len() == 0,
-                "Path size should be 0"
-            );
-        });
+        let fs = MemoryFS::new();
+        let path = fs.path("/foo/bar/baz");
+        assert!(!path.exists(), "Path should not exist");
+        path.mkdir().unwrap();
+        assert!(path.exists(), "Path should exist now");
+        assert!(path.metadata().unwrap().is_dir(), "Path should be dir");
+        assert!(
+            !path.metadata().unwrap().is_file(),
+            "Path should be not be a file"
+        );
+        assert!(path.metadata().unwrap().len() == 0, "Path size should be 0");
     }
 
     #[test]
     fn mkdir_fails_for_file() {
-        block_on(async {
-            let fs = MemoryFS::new();
-            let path = fs.path("/foo");
-            path.open(OpenOptions::new().write(true).create(true).truncate(true))
-                .await
-                .unwrap();
-            assert!(
-                path.create_dir().await.is_err(),
-                "Path should not be created"
-            );
-        });
+        let fs = MemoryFS::new();
+        let path = fs.path("/foo");
+        path.create().unwrap();
+        assert!(path.mkdir().is_err(), "Path should not be created");
     }
 
-    /*#[tokio::test]
-    async fn read_empty_file() {
+    #[test]
+    fn read_empty_file() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true))
-            .await
-            .unwrap();
-        let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+        path.create().unwrap();
+        let mut file = path.open(OpenOptions::new().read(true)).unwrap();
         let mut string: String = "".to_owned();
         file.read_to_string(&mut string).unwrap();
         assert_eq!(string, "");
     }
 
-    #[tokio::test]
-    async fn rm() {
+    #[test]
+    fn rm() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true))
-            .await
-            .unwrap();
-        path.rm().await.unwrap();
-        assert!(!path.exists().await);
+        path.create().unwrap();
+        path.rm().unwrap();
+        assert!(!path.exists());
     }
 
-    #[tokio::test]
-    async fn rmdir() {
+    #[test]
+    fn rmdir() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar");
-        path.mkdir().await.unwrap();
-        path.rm().await.unwrap();
-        assert!(!path.exists().await);
+        path.mkdir().unwrap();
+        path.rm().unwrap();
+        assert!(!path.exists());
     }
 
-    #[tokio::test]
-    async fn rmrf() {
+    #[test]
+    fn rmrf() {
         let fs = MemoryFS::new();
         let dir = fs.path("/foo");
-        dir.mkdir().await.unwrap();
+        dir.mkdir().unwrap();
         let path = fs.path("/foo/bar.txt");
-        path.open(OpenOptions::new().write(true).create(true).truncate(true))
-            .await
-            .unwrap();
-        dir.rm_all().await.unwrap();
-        assert!(!path.exists().await);
-        assert!(!dir.exists().await);
+        path.create().unwrap();
+        dir.rm_all().unwrap();
+        assert!(!path.exists());
+        assert!(!dir.exists());
     }
 
-    #[tokio::test]
-    async fn access_directory_as_file() {
+    #[test]
+    fn access_directory_as_file() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo");
-        path.mkdir().await.unwrap();
+        path.mkdir().unwrap();
+        assert!(path.create().is_err(), "Directory should not be openable");
+        assert!(path.append().is_err(), "Directory should not be openable");
         assert!(
-            path.open(OpenOptions::new().write(true).create(true).truncate(true))
-                .await
-                .is_err(),
-            "Directory should not be openable"
-        );
-        assert!(
-            path.open(OpenOptions::new().write(true).create(true).append(true))
-                .await
-                .is_err(),
-            "Directory should not be openable"
-        );
-        assert!(
-            path.open(OpenOptions::new().read(true)).await.is_err(),
+            path.open(OpenOptions::new().read(true)).is_err(),
             "Directory should not be openable"
         );
     }
 
-    #[tokio::test]
-    async fn write_and_read_file() {
+    #[test]
+    fn write_and_read_file() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
         {
-            let mut file = path
-                .open(OpenOptions::new().write(true).create(true).truncate(true))
-                .await
-                .unwrap();
+            let mut file = path.create().unwrap();
             write!(file, "Hello world").unwrap();
             write!(file, "!").unwrap();
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hello world!");
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             file.seek(SeekFrom::Start(1)).unwrap();
             write!(file, "a").unwrap();
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hallo world!");
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.seek(SeekFrom::End(-1)).unwrap();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "!");
         }
         {
-            let _file = path
-                .open(OpenOptions::new().write(true).create(true).truncate(true))
-                .await
-                .unwrap();
+            let _file = path.create().unwrap();
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "");
         }
     }
 
-    #[tokio::test]
-    async fn append() {
+    #[test]
+    fn append() {
         let fs = MemoryFS::new();
         let path = fs.path("/foobar.txt");
         {
-            let mut file = path
-                .open(OpenOptions::new().write(true).create(true).append(true))
-                .await
-                .unwrap();
+            let mut file = path.append().unwrap();
             write!(file, "Hello").unwrap();
             write!(file, " world").unwrap();
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hello world");
         }
         {
-            let mut file = path
-                .open(OpenOptions::new().write(true).create(true).append(true))
-                .await
-                .unwrap();
+            let mut file = path.append().unwrap();
             write!(file, "!").unwrap();
         }
         {
-            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut file = path.open(OpenOptions::new().read(true)).unwrap();
             let mut string: String = "".to_owned();
             file.read_to_string(&mut string).unwrap();
             assert_eq!(string, "Hello world!");
         }
     }
-    #[tokio::test]
-    async fn resolve() {
+    #[test]
+    fn resolve() {
         let fs = MemoryFS::new();
         let path = fs.path("/");
         assert_eq!(path.to_string(), "/");
@@ -703,8 +591,8 @@ mod tests {
         assert_eq!(path4.to_string(), "/foo/bar");
     }
 
-    #[tokio::test]
-    async fn parent() {
+    #[test]
+    fn parent() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo");
         let path2 = fs.path("/foo/bar");
@@ -713,31 +601,26 @@ mod tests {
         assert!(fs.path("/").parent().is_none());
     }
 
-    #[tokio::test]
-    async fn read_dir() {
+    #[test]
+    fn read_dir() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo");
         let path2 = fs.path("/foo/bar");
         let path3 = fs.path("/foo/baz");
-        path2.mkdir().await.unwrap();
-        path3
-            .open(OpenOptions::new().write(true).create(true).truncate(true))
-            .await
-            .unwrap();
+        path2.mkdir().unwrap();
+        path3.create().unwrap();
         let mut entries: Vec<String> = path
             .read_dir()
-            .await
             .unwrap()
             .map(Result::unwrap)
             .map(|path| path.to_string().into_owned())
-            .collect()
-            .await;
+            .collect();
         entries.sort();
         assert_eq!(entries, vec!["/foo/bar".to_owned(), "/foo/baz".to_owned()]);
     }
 
-    #[tokio::test]
-    async fn file_name() {
+    #[test]
+    fn file_name() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo/bar.txt");
         assert_eq!(path.file_name(), Some("bar.txt".to_owned()));
@@ -745,11 +628,10 @@ mod tests {
         assert_eq!(path.parent().unwrap().extension(), None);
     }
 
-    #[tokio::test]
-    async fn path_buf() {
+    #[test]
+    fn path_buf() {
         let fs = MemoryFS::new();
         let path = fs.path("/foo/bar.txt");
         assert_eq!(None, path.to_path_buf());
     }
-    */
 }

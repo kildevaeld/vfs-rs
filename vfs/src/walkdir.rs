@@ -2,69 +2,41 @@
 use crate::glob::*;
 use crate::{VMetadata, VPath};
 use async_stream::{stream, try_stream};
-use futures_core::{future::BoxFuture, Stream, TryStream};
-use futures_util::{pin_mut, StreamExt};
+use futures_lite::{Stream, StreamExt};
+// use futures_core::{future::BoxFuture, Stream, TryStream};
+// use futures_util::{pin_mut, StreamExt};
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 
-pub fn walkdir<V: VPath + 'static + std::marker::Unpin>(
+pub async fn walkdir<V: VPath + 'static + std::marker::Unpin>(
     path: V,
-) -> BoxFuture<'static, io::Result<Pin<Box<dyn Stream<Item = io::Result<V>> + Send>>>>
+) -> io::Result<Pin<Box<dyn Stream<Item = io::Result<V>> + Send>>>
 where
-    V::ReadDir: Send,
+    V::ReadDir: Send + std::marker::Unpin,
     V::Metadata: Send,
 {
-    // let out = async move {
-    //     let readdir = path.read_dir().await?;
-    //     let out = try_stream! {
-    //         pin_mut!(readdir);
-    //         while let Some(value) = readdir.next().await {
-    //             let value = value?;
-    //             let meta = value.metadata().await?;
-    //             if meta.is_file() {
-    //                 yield value;
-    //             } else {
-    //                 let readdir = walkdir(value).await?;
-    //                 pin_mut!(readdir);
-    //                 while let Some(value) = readdir.next().await {
-    //                     let value = value?;
-    //                     yield value;
-    //                 }
-    //             }
-    //         }
-    //     };
-
-    //     Ok(Box::pin(out) as Pin<Box<dyn Stream<Item = io::Result<V>>>>)
-    // };
-
-    // Box::pin(out)
-    walkdir_match(path, |_| true)
+    walkdir_match::<V, _>(path, |_| true).await
 }
 
-pub fn walkdir_match<V: VPath + 'static + std::marker::Unpin, F>(
+pub async fn walkdir_match<V: VPath + 'static + std::marker::Unpin, F>(
     path: V,
     check: F,
-) -> BoxFuture<'static, io::Result<Pin<Box<dyn Stream<Item = io::Result<V>> + Send>>>>
-//Pin<Box<dyn Future<Output = io::Result<Pin<Box<dyn Stream<Item = io::Result<V>>>>>>>>
+) -> Pin<Box<Future<Outptut = io::Result<Pin<Box<dyn Stream<Item = io::Result<V>> + Send>>>>>>
 where
     F: Sync + Send + 'static + Clone + Fn(&V) -> bool,
-    V::ReadDir: Send,
+    V::ReadDir: Send + std::marker::Unpin,
     V::Metadata: Send,
 {
     let out = async move {
-        let readdir = path.read_dir().await.map_err(|err| {
-            //println!("ERROROROR {} {:?}", err, path.to_string());
-            err
-        })?;
+        let readdir = path.read_dir().await?;
         let out = try_stream! {
-            pin_mut!(readdir);
             while let Some(value) = readdir.next().await {
                 let value = value?;
                 let meta = value.metadata().await?;
                 if meta.is_dir()  {
-                    let readdir = walkdir_match(value, check.clone()).await?;
-                    pin_mut!(readdir);
+                    let readdir = walkdir_match::<V, F>(value, check.clone()).await?;
+                    // pin_mut!(readdir);
                     while let Some(value) = readdir.next().await {
                         let value = value?;
                         if check(&value) {
@@ -85,6 +57,7 @@ where
     };
 
     Box::pin(out)
+    //Ok(Box::pin(out) as Pin<Box<dyn Stream<Item = io::Result<V>> + Send>>)
 }
 
 #[cfg(feature = "glob")]

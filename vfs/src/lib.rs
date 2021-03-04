@@ -1,21 +1,45 @@
+#[cfg(feature = "boxed")]
 pub mod boxed;
-#[cfg(feature = "glob")]
-pub mod glob;
-pub mod memory;
-pub mod overlay;
-pub mod physical;
-pub mod composite;
+#[cfg(feature = "memory")]
+mod memory;
+#[cfg(feature = "fs")]
+mod physical;
 mod traits;
-mod utils;
 
-pub use self::traits::*;
-pub use self::utils::*;
+// #[cfg(feature = "extra")]
+// mod walkdir;
 
-pub mod prelude {
-    #[cfg(feature = "glob")]
-    pub use super::glob::*;
-    pub use super::traits::*;
-    pub use super::utils::*;
+#[cfg(feature = "memory")]
+pub use memory::*;
+#[cfg(feature = "fs")]
+pub use physical::*;
+
+pub use traits::*;
+
+#[async_trait::async_trait]
+pub trait VFSExt: VFS {
+    #[cfg(feature = "boxed")]
+    fn boxed(self) -> Box<dyn boxed::BVFS>
+    where
+        Self: Sized + 'static,
+        <Self::Path as VPath>::ReadDir: Send,
+    {
+        boxed::vfs_box(self)
+    }
 }
 
+#[async_trait::async_trait]
+impl<T> VFSExt for T where T: VFS {}
 
+pub trait VPathExt: VPath {
+    #[cfg(feature = "boxed")]
+    fn boxed(self) -> Box<dyn boxed::BVPath>
+    where
+        Self: Sized + 'static,
+        <Self as VPath>::ReadDir: Send,
+    {
+        boxed::path_box(self)
+    }
+}
+
+impl<T> VPathExt for T where T: VPath {}

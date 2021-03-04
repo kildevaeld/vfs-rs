@@ -1,7 +1,5 @@
 [workspace]
 
 members = [
-    "vfs",
-    "vfs-async",
-    "vfs-cli"
+    "vfs"
 ]
