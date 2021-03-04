@@ -34,6 +34,10 @@ impl PhysicalFS {
             root: Arc::new(abs),
         })
     }
+
+    pub fn root(&self) -> &PathBuf {
+        self.root.as_ref()
+    }
 }
 
 impl VMetadata for Metadata {
