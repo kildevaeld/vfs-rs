@@ -16,6 +16,8 @@ pub use physical::*;
 
 pub use traits::*;
 
+use futures_lite::{AsyncReadExt, AsyncWriteExt};
+
 #[async_trait::async_trait]
 pub trait VFSExt: VFS {
     #[cfg(feature = "boxed")]
@@ -25,6 +27,32 @@ pub trait VFSExt: VFS {
         <Self::Path as VPath>::ReadDir: Send,
     {
         boxed::vfs_box(self)
+    }
+
+    async fn read(&self, path: &str) -> Result<Vec<u8>, std::io::Error>
+    where
+        <Self::Path as VPath>::File: std::marker::Unpin,
+    {
+        let mut file = self.path(path).open(OpenOptions::new().read(true)).await?;
+        let mut out = Vec::new();
+        file.read_to_end(&mut out).await?;
+        Ok(out)
+    }
+
+    async fn write(&self, path: &str, data: &[u8]) -> Result<(), std::io::Error>
+    where
+        <Self::Path as VPath>::File: std::marker::Unpin,
+    {
+        let mut file = self
+            .path(path)
+            .open(OpenOptions::new().write(true).truncate(true))
+            .await?;
+
+        file.write_all(data).await?;
+
+        file.flush().await?;
+
+        Ok(())
     }
 }
 
