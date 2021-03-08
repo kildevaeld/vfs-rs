@@ -263,6 +263,7 @@ mod tests {
 
     use super::*;
     use super::{OpenOptions, VPath};
+    use crate::VFSExt;
     use futures::{executor::block_on, io::AsyncReadExt, StreamExt};
 
     #[test]
@@ -311,6 +312,14 @@ mod tests {
             let vfs = PhysicalFS::new(".").unwrap();
             let src = vfs.path("./src");
             let _entries: Vec<Result<PhysicalPath>> = src.read_dir().await.unwrap().collect().await;
+        })
+    }
+
+    #[test]
+    fn readfile() {
+        block_on(async {
+            let vfs = PhysicalFS::new(".").unwrap();
+            let src = vfs.read("./src/lib.rs").await.unwrap();
         })
     }
 
