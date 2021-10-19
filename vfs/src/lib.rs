@@ -48,7 +48,7 @@ pub trait VFSExt: VFS {
     {
         let mut file = self
             .path(path)
-            .open(OpenOptions::new().write(true).truncate(true))
+            .open(OpenOptions::new().write(true).truncate(true).create(true)))
             .await?;
 
         file.write_all(data).await?;
