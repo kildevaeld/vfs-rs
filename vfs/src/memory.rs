@@ -79,7 +79,7 @@ pub struct MemoryFSImpl {
 pub type MemoryFSHandle = Arc<RwLock<MemoryFSImpl>>;
 
 /// An ephemeral in-memory file system, intended mainly for unit tests
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryFS {
     handle: MemoryFSHandle,
 }
