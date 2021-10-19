@@ -6,8 +6,9 @@ mod memory;
 mod physical;
 mod traits;
 
+#[cfg(feature = "embed")]
+pub mod embed;
 pub mod util;
-
 // #[cfg(feature = "extra")]
 // mod walkdir;
 

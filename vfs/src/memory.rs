@@ -21,11 +21,15 @@ use std::task::{Context, Poll};
 pub type Filename = String;
 
 #[derive(Debug, Clone)]
-pub struct DataHandle(Arc<RwLock<Vec<u8>>>);
+pub struct DataHandle(pub(crate) Arc<RwLock<Vec<u8>>>);
 
 impl DataHandle {
     fn new() -> DataHandle {
         DataHandle(Arc::new(RwLock::new(Vec::new())))
+    }
+
+    pub fn with_data(data: Vec<u8>) -> DataHandle {
+        DataHandle(Arc::new(RwLock::new(data)))
     }
 }
 
@@ -92,8 +96,8 @@ impl MemoryFS {
 
 #[derive(Debug)]
 pub struct MemoryFile {
-    pub data: DataHandle,
-    pub pos: u64,
+    pub(crate) data: DataHandle,
+    pub(crate) pos: u64,
 }
 
 impl Read for MemoryFile {
@@ -331,7 +335,7 @@ fn traverse_with<R, F: FnOnce(&mut FsNode) -> R>(
 }
 
 impl MemoryPath {
-    fn open_with_options(&self, open_options: &OpenOptions) -> Result<MemoryFile> {
+    pub(crate) fn open_with_options(&self, open_options: &OpenOptions) -> Result<MemoryFile> {
         let parent_path = match self.parent_internal() {
             None => {
                 return Err(Error::new(
@@ -377,6 +381,14 @@ impl MemoryPath {
             data: data_handle,
             pos: pos,
         })
+    }
+
+    pub(crate) fn create_dir_inner(&self) -> Result<()> {
+        let root = &mut self.fs.write().unwrap().root;
+        let mut components: Vec<&str> = self.path.split("/").collect();
+        components.reverse();
+        components.pop();
+        traverse_mkdir(root, &mut components)
     }
 }
 

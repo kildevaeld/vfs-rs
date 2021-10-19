@@ -14,6 +14,7 @@ async-fs = { version = "1", optional = true }
 blocking = { version = "1", optional = true }
 futures-lite = "1"
 async-stream = { version = "0.3", optional = true }
+rust-embed = { version = "6", optional = true }
 
 [dev-dependencies]
 futures = { version = "0.3", default-features = false, features = [ "std", "executor" ] }
@@ -24,3 +25,4 @@ boxed = [ "pin-project" ]
 memory = [  ]
 fs = [ "async-fs", "blocking" ]
 extra = [ "async-stream" ]
+embed = ["rust-embed", "memory"]
