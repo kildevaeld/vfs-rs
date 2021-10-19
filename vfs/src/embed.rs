@@ -1,7 +1,7 @@
 use super::{DataHandle, MemoryFS, OpenOptions, VPath, VFS};
 use rust_embed::RustEmbed;
 
-pub async fn assets_to_vfs<R: RustEmbed>() -> MemoryFS {
+pub fn assets_to_vfs<R: RustEmbed>() -> MemoryFS {
     let mem = MemoryFS::new();
 
     for path in R::iter() {
