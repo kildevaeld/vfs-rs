@@ -19,7 +19,7 @@ where
     walkdir_match::<V, _>(path, |_| true).await
 }
 
-pub async fn walkdir_match<V: VPath + 'static + std::marker::Unpin, F>(
+pub fn walkdir_match<V: VPath + 'static + std::marker::Unpin, F>(
     path: V,
     check: F,
 ) -> Pin<Box<Future<Outptut = io::Result<Pin<Box<dyn Stream<Item = io::Result<V>> + Send>>>>>>

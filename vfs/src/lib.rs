@@ -6,6 +6,8 @@ mod memory;
 mod physical;
 mod traits;
 
+pub mod util;
+
 // #[cfg(feature = "extra")]
 // mod walkdir;
 
@@ -59,15 +61,15 @@ pub trait VFSExt: VFS {
 #[async_trait::async_trait]
 impl<T> VFSExt for T where T: VFS {}
 
-pub trait VPathExt: VPath {
-    #[cfg(feature = "boxed")]
-    fn boxed(self) -> Box<dyn boxed::BVPath>
-    where
-        Self: Sized + 'static,
-        <Self as VPath>::ReadDir: Send,
-    {
-        boxed::path_box(self)
-    }
-}
+// pub trait VPathExt: VPath {
+//     #[cfg(feature = "boxed")]
+//     fn boxed(self) -> Box<dyn boxed::BVPath>
+//     where
+//         Self: Sized + 'static,
+//         <Self as VPath>::ReadDir: Send,
+//     {
+//         boxed::path_box(self)
+//     }
+// }
 
-impl<T> VPathExt for T where T: VPath {}
+// impl<T> VPathExt for T where T: VPath {}
