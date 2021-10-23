@@ -28,6 +28,7 @@ pub trait VFSExt: VFS {
     where
         Self: Sized + 'static,
         <Self::Path as VPath>::ReadDir: Send,
+        <Self::Path as VPath>::Metadata: Send,
     {
         boxed::vfs_box(self)
     }

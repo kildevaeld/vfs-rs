@@ -11,12 +11,16 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 pub trait BVFS: Sync + Send {
-    fn path(&self, path: &str) -> Box<dyn BVPath>;
+    fn path(&self, path: &str) -> BVPathBox;
 }
 
 pub type BVFSBox = Box<dyn BVFS>;
 
 pub type BVPathBox = Box<dyn BVPath>;
+
+pub type BVMetadataBox = Box<dyn VMetadata + Send>;
+
+pub type BVFileBox = Pin<Box<dyn VFile>>;
 
 #[async_trait]
 pub trait BVPath: Send + Sync {
@@ -26,25 +30,24 @@ pub trait BVPath: Send + Sync {
     fn extension(&self) -> Option<String>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Box<dyn BVPath>;
+    fn resolve(&self, path: &str) -> BVPathBox;
 
     /// Get the parent path
-    fn parent(&self) -> Option<Box<dyn BVPath>>;
+    fn parent(&self) -> Option<BVPathBox>;
 
     /// Check if the file existst
     async fn exists(&self) -> bool;
 
     /// Get the file's metadata
-    async fn metadata(&self) -> Result<Box<dyn VMetadata>>;
+    async fn metadata(&self) -> Result<BVMetadataBox>;
 
     fn to_string(&self) -> Cow<str>;
 
     // fn to_path_buf(&self) -> Option<PathBuf>;
 
-    async fn open(&self, options: OpenOptions) -> Result<Pin<Box<dyn VFile>>>;
+    async fn open(&self, options: OpenOptions) -> Result<BVFileBox>;
 
-    async fn read_dir(&self)
-        -> Result<Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>>;
+    async fn read_dir(&self) -> Result<Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>>;
 
     /// Create a directory at the location by this path
     async fn create_dir(&self) -> Result<()>;
@@ -53,17 +56,19 @@ pub trait BVPath: Send + Sync {
     /// Remove a file or directory and all its contents
     async fn rm_all(&self) -> Result<()>;
 
-    fn box_clone(&self) -> Box<dyn BVPath>;
+    fn box_clone(&self) -> BVPathBox;
 }
 
 struct VFSBox<V>(V);
 
 impl<V: VFS> BVFS for VFSBox<V>
 where
+    V: Send,
     V::Path: 'static + Send + Sync,
     <V::Path as VPath>::ReadDir: Send,
+    <V::Path as VPath>::Metadata: Send,
 {
-    fn path(&self, path: &str) -> Box<dyn BVPath> {
+    fn path(&self, path: &str) -> BVPathBox {
         Box::new(VPathBox(self.0.path(path)))
     }
 }
@@ -75,6 +80,7 @@ impl<P> BVPath for VPathBox<P>
 where
     P: Send + Sync + VPath + 'static,
     P::ReadDir: Send,
+    P::Metadata: Send,
 {
     fn file_name(&self) -> Option<String> {
         self.0.file_name()
@@ -86,15 +92,13 @@ where
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Box<dyn BVPath> {
+    fn resolve(&self, path: &str) -> BVPathBox {
         Box::new(VPathBox(self.0.resolve(path)))
     }
 
     /// Get the parent path
-    fn parent(&self) -> Option<Box<dyn BVPath>> {
-        self.0
-            .parent()
-            .map(|p| Box::new(VPathBox(p)) as Box<dyn BVPath>)
+    fn parent(&self) -> Option<BVPathBox> {
+        self.0.parent().map(|p| Box::new(VPathBox(p)) as BVPathBox)
     }
 
     /// Check if the file existst
@@ -103,10 +107,10 @@ where
     }
 
     /// Get the file's metadata
-    async fn metadata(&self) -> Result<Box<dyn VMetadata>> {
+    async fn metadata(&self) -> Result<BVMetadataBox> {
         let req = self.0.metadata();
         match req.await {
-            Ok(meta) => Ok(Box::new(VMetadataBox(meta)) as Box<dyn VMetadata>),
+            Ok(meta) => Ok(Box::new(VMetadataBox(meta)) as BVMetadataBox),
             Err(err) => Err(err),
         }
         // pin_mut!(req);
@@ -117,21 +121,21 @@ where
         self.0.to_string()
     }
 
-    async fn open(&self, options: OpenOptions) -> Result<Pin<Box<dyn VFile>>> {
+    async fn open(&self, options: OpenOptions) -> Result<BVFileBox> {
         let req = self.0.open(options);
         match req.await {
-            Ok(file) => Ok(Box::pin(VFileBox(file)) as Pin<Box<dyn VFile>>),
+            Ok(file) => Ok(Box::pin(VFileBox(file)) as BVFileBox),
             Err(err) => Err(err),
         }
     }
 
-    async fn read_dir(
-        &self,
-    ) -> Result<Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>> {
+    async fn read_dir(&self) -> Result<Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>> {
         let req = self.0.read_dir();
         match req.await {
-            Ok(p) => Ok(Box::pin(ReadDirBox(p))
-                as Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>),
+            Ok(p) => {
+                Ok(Box::pin(ReadDirBox(p))
+                    as Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>)
+            }
             Err(err) => Err(err),
         }
     }
@@ -149,7 +153,7 @@ where
         self.0.rm_all().await
     }
 
-    fn box_clone(&self) -> Box<dyn BVPath> {
+    fn box_clone(&self) -> BVPathBox {
         Box::new(VPathBox(self.0.clone()))
     }
 }
@@ -225,8 +229,9 @@ where
     S: Stream<Item = Result<P>> + Send,
     P: VPath + 'static,
     P::ReadDir: Send,
+    P::Metadata: Send,
 {
-    type Item = Result<Box<dyn BVPath>>;
+    type Item = Result<BVPathBox>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(self.project().0.poll_next(cx)) {
             Some(Ok(item)) => Poll::Ready(Some(Ok(Box::new(VPathBox(item))))),
@@ -242,17 +247,17 @@ VPath
 
 ****************/
 
-impl Clone for Box<dyn BVPath> {
+impl Clone for BVPathBox {
     fn clone(&self) -> Self {
         self.as_ref().box_clone()
     }
 }
 
 #[async_trait]
-impl VPath for Box<dyn BVPath> {
-    type Metadata = Box<dyn VMetadata>;
-    type File = Pin<Box<dyn VFile>>;
-    type ReadDir = Pin<Box<dyn Stream<Item = Result<Box<dyn BVPath>>> + Send>>;
+impl VPath for BVPathBox {
+    type Metadata = Box<dyn VMetadata + Send>;
+    type File = BVFileBox;
+    type ReadDir = Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>;
 
     fn file_name(&self) -> Option<String> {
         self.as_ref().file_name()
@@ -309,9 +314,9 @@ impl VPath for Box<dyn BVPath> {
     }
 }
 
-impl VFile for Pin<Box<dyn VFile>> {}
+impl VFile for BVFileBox {}
 
-impl VMetadata for Box<dyn VMetadata> {
+impl VMetadata for Box<dyn VMetadata + Send> {
     fn is_dir(&self) -> bool {
         self.as_ref().is_dir()
     }
@@ -326,7 +331,7 @@ impl VMetadata for Box<dyn VMetadata> {
 }
 
 impl VFS for Box<dyn BVFS> {
-    type Path = Box<dyn BVPath>;
+    type Path = BVPathBox;
     fn path(&self, path: &str) -> Self::Path {
         self.as_ref().path(path)
     }
@@ -335,13 +340,15 @@ impl VFS for Box<dyn BVFS> {
 pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> Box<dyn BVFS>
 where
     <V::Path as VPath>::ReadDir: Send,
+    <V::Path as VPath>::Metadata: Send,
 {
     Box::new(VFSBox(v))
 }
 
-pub fn path_box<V: VPath + 'static>(path: V) -> Box<dyn BVPath>
+pub fn path_box<V: VPath + 'static>(path: V) -> BVPathBox
 where
     V::ReadDir: Send,
+    V::Metadata: Send,
 {
     Box::new(VPathBox(path))
 }
