@@ -1,46 +1,12 @@
-use super::traits::{VMetadata, VPath, VFS};
+use super::types::{VMetadata, VPath};
 use super::OpenOptions;
-// use futures_core::Stream;
-// use futures_io::AsyncRead;
-use futures_lite::StreamExt;
-use pin_project::pin_project;
+use futures_util::StreamExt;
+
 use std::error::Error as StdError;
 use std::fmt;
 use std::future::Future;
 use std::io::Error;
 use std::pin::Pin;
-use std::task::{Context, Poll};
-
-// use tokio;
-
-// #[pin_project]
-// struct ByteStream<R, N: ArrayLength<u8>>(#[pin] R, GenericArray<u8, N>);
-
-// impl<R, N: ArrayLength<u8>> ByteStream<R, N> {
-//     pub fn new(read: R) -> ByteStream<R, N> {
-//         ByteStream(read, GenericArray::default())
-//     }
-// }
-
-// impl<R: AsyncRead, N: ArrayLength<u8>> Stream for ByteStream<R, N> {
-//     // The same as our future above:
-//     type Item = Result<Bytes, std::io::Error>;
-//     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-//         let mut this = self.project();
-//         //let mut buf = [0; 1024];
-//         match this.0.poll_read(cx, &mut this.1) {
-//             Poll::Pending => Poll::Pending,
-//             Poll::Ready(Ok(ret)) => {
-//                 if ret == 0 {
-//                     Poll::Ready(None)
-//                 } else {
-//                     Poll::Ready(Some(Ok(Bytes::copy_from_slice(&this.1[0..ret]))))
-//                 }
-//             }
-//             Poll::Ready(Err(err)) => Poll::Ready(Some(Err(err))),
-//         }
-//     }
-// }
 
 #[derive(Debug)]
 pub enum CopyError {
@@ -49,7 +15,7 @@ pub enum CopyError {
 }
 
 impl fmt::Display for CopyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Ok(())
     }
 }
@@ -73,26 +39,7 @@ impl<P: VPath> Entry<P> {
     }
 }
 
-pub async fn copy<S: VPath, D: VPath>(source: S, dest: D) -> Result<(), CopyError>
-where
-    S: 'static,
-    S::File: std::marker::Unpin,
-    S::Metadata: Send,
-    S::ReadDir: std::marker::Unpin + Send,
-    D: Clone + 'static,
-    D::File: std::marker::Unpin,
-    D::Metadata: Send,
-{
-    Ok(copy_path(source, dest, |source, dest| async move {
-        futures_io::copy(source.file, dest.file)
-            .await
-            .map(|_| ())
-            .map_err(CopyError::Io)
-    })
-    .await?)
-}
-
-pub fn copy_path<S: VPath, D: VPath, F, U>(
+pub fn copy_with<S: VPath, D: VPath, F, U>(
     source: S,
     dest: D,
     copy_file: F,
@@ -127,7 +74,7 @@ where
             .map(|_| ())?);
         } else if s_meta.is_file() && d_meta.is_dir() {
             let s_file = source.open(OpenOptions::new().read(true)).await?;
-            let d_path = dest.resolve(&source.to_string());
+            let d_path = dest.resolve(&source.to_string())?;
             d_path.parent().unwrap().create_dir().await?;
 
             let d_file = d_path
@@ -143,10 +90,29 @@ where
 
             while let Some(next) = read_dir.next().await {
                 let next = next?;
-                copy_path(next, dest.clone(), copy_file.clone()).await?;
+                copy_with(next, dest.clone(), copy_file.clone()).await?;
             }
         }
 
         Ok(())
     })
+}
+
+pub async fn copy<S: VPath, D: VPath>(source: S, dest: D) -> Result<(), CopyError>
+where
+    S: 'static,
+    S::File: std::marker::Unpin,
+    S::Metadata: Send,
+    S::ReadDir: std::marker::Unpin + Send,
+    D: Clone + 'static,
+    D::File: std::marker::Unpin,
+    D::Metadata: Send,
+{
+    Ok(copy_with(source, dest, |source, mut dest| async move {
+        futures_util::io::copy(source.file, &mut dest.file)
+            .await
+            .map(|_| ())
+            .map_err(CopyError::Io)
+    })
+    .await?)
 }
