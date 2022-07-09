@@ -1,16 +1,13 @@
 use async_trait::async_trait;
-use futures_lite::{
-    io::{AsyncRead, AsyncSeek, AsyncWrite},
-    Stream,
-};
-use std::borrow::Cow;
+use futures_core::Stream;
+use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
 use std::io::Result;
 
 pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite + Send {}
 
 pub trait VFS: Send + Sync {
     type Path: VPath;
-    fn path(&self, path: &str) -> Self::Path;
+    fn path(&self, path: &str) -> Result<Self::Path>;
 }
 
 #[async_trait]
@@ -19,13 +16,13 @@ pub trait VPath: Clone + Send + Sync {
     type File: VFile;
     type ReadDir: Stream<Item = Result<Self>>;
 
-    fn file_name(&self) -> Option<String>;
+    fn file_name(&self) -> Option<&str>;
 
     /// The extension of this filename
-    fn extension(&self) -> Option<String>;
+    fn extension(&self) -> Option<&str>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Self;
+    fn resolve(&self, path: &str) -> Result<Self>;
 
     /// Get the parent path
     fn parent(&self) -> Option<Self>;
@@ -36,9 +33,7 @@ pub trait VPath: Clone + Send + Sync {
     /// Get the file's metadata
     async fn metadata(&self) -> Result<Self::Metadata>;
 
-    fn to_string(&self) -> Cow<str>;
-
-    // fn to_path_buf(&self) -> Option<PathBuf>;
+    fn to_string(&self) -> String;
 
     async fn open(&self, options: OpenOptions) -> Result<Self::File>;
     async fn read_dir(&self) -> Result<Self::ReadDir>;
@@ -61,11 +56,11 @@ pub trait VMetadata {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct OpenOptions {
-    pub(crate) read: bool,
-    pub(crate) write: bool,
-    pub(crate) create: bool,
-    pub(crate) append: bool,
-    pub(crate) truncate: bool,
+    pub read: bool,
+    pub write: bool,
+    pub create: bool,
+    pub append: bool,
+    pub truncate: bool,
 }
 
 impl OpenOptions {

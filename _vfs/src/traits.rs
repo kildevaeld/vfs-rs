@@ -1,19 +1,23 @@
+use async_trait::async_trait;
+use futures_lite::{
+    io::{AsyncRead, AsyncSeek, AsyncWrite},
+    Stream,
+};
 use std::borrow::Cow;
-use std::fmt::Debug;
-use std::io::{Read, Result, Write};
-use std::path::PathBuf;
+use std::io::Result;
 
-pub trait VFile: Read + Write {}
+pub trait VFile: AsyncRead + AsyncSeek + AsyncWrite + Send {}
 
-pub trait VFS: Sync + Send + Debug {
+pub trait VFS: Send + Sync {
     type Path: VPath;
     fn path(&self, path: &str) -> Self::Path;
 }
 
-pub trait VPath: Debug + Sync + Send + Clone {
+#[async_trait]
+pub trait VPath: Clone + Send + Sync {
     type Metadata: VMetadata;
-    type File: VFile + Send;
-    type Iterator: Iterator<Item = Result<Self>>;
+    type File: VFile;
+    type ReadDir: Stream<Item = Result<Self>>;
 
     fn file_name(&self) -> Option<String>;
 
@@ -27,36 +31,25 @@ pub trait VPath: Debug + Sync + Send + Clone {
     fn parent(&self) -> Option<Self>;
 
     /// Check if the file existst
-    fn exists(&self) -> bool;
+    async fn exists(&self) -> bool;
 
     /// Get the file's metadata
-    fn metadata(&self) -> Result<Self::Metadata>;
+    async fn metadata(&self) -> Result<Self::Metadata>;
 
     fn to_string(&self) -> Cow<str>;
 
-    fn to_path_buf(&self) -> Option<PathBuf>;
+    // fn to_path_buf(&self) -> Option<PathBuf>;
 
-    fn open(&self, options: OpenOptions) -> Result<Self::File>;
-    fn read_dir(&self) -> Result<Self::Iterator>;
-
+    async fn open(&self, options: OpenOptions) -> Result<Self::File>;
+    async fn read_dir(&self) -> Result<Self::ReadDir>;
 
     /// Create a directory at the location by this path
-    fn mkdir(&self) -> Result<()>;
+    async fn create_dir(&self) -> Result<()>;
     /// Remove a file
-    fn rm(&self) -> Result<()>;
+    async fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
-    fn rm_all(&self) -> Result<()>;
-
-    fn create(&self) -> Result<Self::File> {
-        self.open(OpenOptions::new().write(true).create(true).truncate(true))
-    }
-    fn append(&self) -> Result<Self::File> {
-        self.open(OpenOptions::new().write(true).create(true).append(true))
-    }
-
-
+    async fn rm_all(&self) -> Result<()>;
 }
-
 
 pub trait VMetadata {
     fn is_dir(&self) -> bool;
@@ -66,7 +59,7 @@ pub trait VMetadata {
     fn len(&self) -> u64;
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct OpenOptions {
     pub(crate) read: bool,
     pub(crate) write: bool,

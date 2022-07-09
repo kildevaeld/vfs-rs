@@ -1,200 +1,263 @@
-use super::traits::*;
+use crate::{OpenOptions, VFile, VMetadata, VPath, VFS};
+use async_trait::async_trait;
+use futures_lite::{
+    io::{AsyncRead, AsyncSeek, AsyncWrite, SeekFrom},
+    ready, Stream,
+};
+use pin_project::pin_project;
 use std::borrow::Cow;
-use std::fmt::Debug;
-use std::io::{Read, Result, Write};
-use std::path::PathBuf;
+use std::io::Result;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-pub trait BVFS: Sync + Send + Debug {
-    fn path(&self, path: &str) -> Box<dyn BPath>;
+pub trait BVFS: Sync + Send {
+    fn path(&self, path: &str) -> BVPathBox;
 }
 
-pub trait BFile: Read + Write + Send {}
+pub type BVFSBox = Box<dyn BVFS>;
 
-impl<T> BFile for T where T: Read + Write + Send {}
+pub type BVPathBox = Box<dyn BVPath>;
 
-pub trait BPath: Debug + Send + Sync {
+pub type BVMetadataBox = Box<dyn VMetadata + Send>;
+
+pub type BVFileBox = Pin<Box<dyn VFile>>;
+
+#[async_trait]
+pub trait BVPath: Send + Sync {
     fn file_name(&self) -> Option<String>;
 
     /// The extension of this filename
     fn extension(&self) -> Option<String>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Box<dyn BPath>;
+    fn resolve(&self, path: &str) -> BVPathBox;
 
     /// Get the parent path
-    fn parent(&self) -> Option<Box<dyn BPath>>;
+    fn parent(&self) -> Option<BVPathBox>;
 
     /// Check if the file existst
-    fn exists(&self) -> bool;
+    async fn exists(&self) -> bool;
 
     /// Get the file's metadata
-    fn metadata(&self) -> Result<Box<dyn VMetadata>>;
+    async fn metadata(&self) -> Result<BVMetadataBox>;
 
-    fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>>;
-    fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<Box<dyn BPath>>>>>;
+    fn to_string(&self) -> Cow<str>;
+
+    // fn to_path_buf(&self) -> Option<PathBuf>;
+
+    async fn open(&self, options: OpenOptions) -> Result<BVFileBox>;
+
+    async fn read_dir(&self) -> Result<Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>>;
 
     /// Create a directory at the location by this path
-    fn mkdir(&self) -> Result<()>;
+    async fn create_dir(&self) -> Result<()>;
     /// Remove a file
-    fn rm(&self) -> Result<()>;
+    async fn rm(&self) -> Result<()>;
     /// Remove a file or directory and all its contents
-    fn rm_all(&self) -> Result<()>;
-    fn box_clone(&self) -> Box<dyn BPath>;
-    fn to_string(&self) -> Cow<str>;
+    async fn rm_all(&self) -> Result<()>;
+
+    fn box_clone(&self) -> BVPathBox;
 }
 
-#[derive(Debug)]
-struct BPathWrapper<P> {
-    inner: P,
-}
+struct VFSBox<V>(V);
 
-impl<P> BPath for BPathWrapper<P>
+impl<V: VFS> BVFS for VFSBox<V>
 where
-    P: VPath + 'static,
+    V: Send,
+    V::Path: 'static + Send + Sync,
+    <V::Path as VPath>::ReadDir: Send,
+    <V::Path as VPath>::Metadata: Send,
+{
+    fn path(&self, path: &str) -> BVPathBox {
+        Box::new(VPathBox(self.0.path(path)))
+    }
+}
+
+struct VPathBox<P>(P);
+
+#[async_trait]
+impl<P> BVPath for VPathBox<P>
+where
+    P: Send + Sync + VPath + 'static,
+    P::ReadDir: Send,
+    P::Metadata: Send,
 {
     fn file_name(&self) -> Option<String> {
-        self.inner.file_name()
+        self.0.file_name()
     }
 
     /// The extension of this filename
     fn extension(&self) -> Option<String> {
-        self.inner.extension()
+        self.0.extension()
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Box<dyn BPath> {
-        let ret = self.inner.resolve(path);
-        Box::new(BPathWrapper { inner: ret })
+    fn resolve(&self, path: &str) -> BVPathBox {
+        Box::new(VPathBox(self.0.resolve(path)))
     }
 
     /// Get the parent path
-    fn parent(&self) -> Option<Box<dyn BPath>> {
-        match self.inner.parent() {
-            Some(m) => Some(Box::new(BPathWrapper { inner: m })),
-            None => None,
-        }
+    fn parent(&self) -> Option<BVPathBox> {
+        self.0.parent().map(|p| Box::new(VPathBox(p)) as BVPathBox)
     }
 
     /// Check if the file existst
-    fn exists(&self) -> bool {
-        self.inner.exists()
+    async fn exists(&self) -> bool {
+        self.0.exists().await
     }
 
     /// Get the file's metadata
-    fn metadata(&self) -> Result<Box<dyn VMetadata>> {
-        match self.inner.metadata() {
-            Ok(m) => Ok(Box::new(m)),
-            Err(e) => Err(e),
+    async fn metadata(&self) -> Result<BVMetadataBox> {
+        let req = self.0.metadata();
+        match req.await {
+            Ok(meta) => Ok(Box::new(VMetadataBox(meta)) as BVMetadataBox),
+            Err(err) => Err(err),
+        }
+        // pin_mut!(req);
+        // Box::pin(req.map_ok(|meta| Box::new(VMetadataBox(meta)) as Box<dyn BVMetadata>))
+    }
+
+    fn to_string(&self) -> Cow<str> {
+        self.0.to_string()
+    }
+
+    async fn open(&self, options: OpenOptions) -> Result<BVFileBox> {
+        let req = self.0.open(options);
+        match req.await {
+            Ok(file) => Ok(Box::pin(VFileBox(file)) as BVFileBox),
+            Err(err) => Err(err),
         }
     }
 
-    fn open(&self, options: OpenOptions) -> Result<Box<dyn BFile>> {
-        match self.inner.open(options) {
-            Ok(m) => Ok(Box::new(m)),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<Box<dyn BPath>>>>> {
-        match self.inner.read_dir() {
-            Ok(m) => Ok(Box::new(BPathIterator::<P::Iterator, P>::new(m))),
-            Err(e) => Err(e),
+    async fn read_dir(&self) -> Result<Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>> {
+        let req = self.0.read_dir();
+        match req.await {
+            Ok(p) => {
+                Ok(Box::pin(ReadDirBox(p))
+                    as Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>)
+            }
+            Err(err) => Err(err),
         }
     }
 
     /// Create a directory at the location by this path
-    fn mkdir(&self) -> Result<()> {
-        self.inner.mkdir()
+    async fn create_dir(&self) -> Result<()> {
+        self.0.create_dir().await
     }
     /// Remove a file
-    fn rm(&self) -> Result<()> {
-        self.inner.rm()
+    async fn rm(&self) -> Result<()> {
+        self.0.rm().await
     }
     /// Remove a file or directory and all its contents
-    fn rm_all(&self) -> Result<()> {
-        self.inner.rm_all()
+    async fn rm_all(&self) -> Result<()> {
+        self.0.rm_all().await
     }
 
-    fn box_clone(&self) -> Box<dyn BPath> {
-        let path = Box::new(BPathWrapper {
-            inner: self.inner.clone(),
-        });
-        path
-    }
-
-    fn to_string(&self) -> Cow<str> {
-        self.inner.to_string()
+    fn box_clone(&self) -> BVPathBox {
+        Box::new(VPathBox(self.0.clone()))
     }
 }
 
-impl Clone for Box<dyn BPath> {
-    fn clone(&self) -> Box<dyn BPath> {
-        self.box_clone()
+struct VMetadataBox<M>(M);
+
+impl<M> VMetadata for VMetadataBox<M>
+where
+    M: VMetadata,
+{
+    fn is_dir(&self) -> bool {
+        self.0.is_dir()
+    }
+    /// Returns true iff this path is a file
+    fn is_file(&self) -> bool {
+        self.0.is_file()
+    }
+    /// Returns the length of the file at this path
+    fn len(&self) -> u64 {
+        self.0.len()
     }
 }
 
-struct BPathIterator<Iter, I> {
-    inner: Iter,
-    _i: std::marker::PhantomData<I>,
+#[pin_project]
+struct VFileBox<F>(#[pin] F);
+
+impl<F> AsyncRead for VFileBox<F>
+where
+    F: VFile,
+{
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize>> {
+        self.project().0.poll_read(cx, buf)
+    }
 }
 
-impl<Iter, I> BPathIterator<Iter, I> {
-    pub fn new(inner: Iter) -> BPathIterator<Iter, I> {
-        BPathIterator {
-            inner,
-            _i: std::marker::PhantomData,
+impl<F> AsyncWrite for VFileBox<F>
+where
+    F: VFile,
+{
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
+        self.project().0.poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.project().0.poll_flush(cx)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.project().0.poll_close(cx)
+    }
+}
+
+impl<F> AsyncSeek for VFileBox<F>
+where
+    F: VFile,
+{
+    fn poll_seek(self: Pin<&mut Self>, cx: &mut Context<'_>, pos: SeekFrom) -> Poll<Result<u64>> {
+        self.project().0.poll_seek(cx, pos)
+    }
+}
+
+impl<F> VFile for VFileBox<F> where F: VFile {}
+
+#[pin_project]
+struct ReadDirBox<S>(#[pin] S);
+
+impl<S, P> Stream for ReadDirBox<S>
+where
+    S: Stream<Item = Result<P>> + Send,
+    P: VPath + 'static,
+    P::ReadDir: Send,
+    P::Metadata: Send,
+{
+    type Item = Result<BVPathBox>;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match ready!(self.project().0.poll_next(cx)) {
+            Some(Ok(item)) => Poll::Ready(Some(Ok(Box::new(VPathBox(item))))),
+            Some(Err(err)) => Poll::Ready(Some(Err(err))),
+            None => Poll::Ready(None),
         }
     }
 }
 
-impl<Iter, I> Iterator for BPathIterator<Iter, I>
-where
-    Iter: Iterator<Item = Result<I>>,
-    I: VPath + 'static,
-{
-    type Item = Result<Box<dyn BPath>>;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.inner.next() {
-            Some(m) => match m {
-                Ok(m) => Some(Ok(Box::new(BPathWrapper { inner: m }))),
-                Err(e) => Some(Err(e)),
-            },
-            None => None,
-        }
+/* ***************
+
+VPath
+
+****************/
+
+impl Clone for BVPathBox {
+    fn clone(&self) -> Self {
+        self.as_ref().box_clone()
     }
 }
 
-#[derive(Debug)]
-struct BVFSWrapper<V> {
-    inner: V,
-}
-
-impl<V> BVFS for BVFSWrapper<V>
-where
-    V: VFS,
-    <V as VFS>::Path: 'static,
-{
-    fn path(&self, path: &str) -> Box<dyn BPath> {
-        return Box::new(BPathWrapper {
-            inner: self.inner.path(path),
-        });
-    }
-}
-
-pub fn vfs_box<V: VFS + 'static>(v: V) -> Box<dyn BVFS> {
-    Box::new(BVFSWrapper { inner: v })
-}
-
-pub fn path_box<V: VPath + 'static>(path: V) -> Box<dyn BPath> {
-    Box::new(BPathWrapper {
-        inner: path,
-    })
-}
-
-impl VPath for Box<dyn BPath> {
-    type Metadata = Box<dyn VMetadata + 'static>;
-    type File = Box<dyn BFile>;
-    type Iterator = Box<dyn Iterator<Item = Result<Box<dyn BPath + 'static>>>>;
+#[async_trait]
+impl VPath for BVPathBox {
+    type Metadata = Box<dyn VMetadata + Send>;
+    type File = BVFileBox;
+    type ReadDir = Pin<Box<dyn Stream<Item = Result<BVPathBox>> + Send>>;
 
     fn file_name(&self) -> Option<String> {
         self.as_ref().file_name()
@@ -206,81 +269,86 @@ impl VPath for Box<dyn BPath> {
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Box<dyn BPath> {
+    fn resolve(&self, path: &str) -> Self {
         self.as_ref().resolve(path)
     }
 
     /// Get the parent path
-    fn parent(&self) -> Option<Box<dyn BPath>> {
+    fn parent(&self) -> Option<Self> {
         self.as_ref().parent()
     }
 
     /// Check if the file existst
-    fn exists(&self) -> bool {
-        self.as_ref().exists()
+    async fn exists(&self) -> bool {
+        self.as_ref().exists().await
     }
 
     /// Get the file's metadata
-    fn metadata(&self) -> Result<Self::Metadata> {
-        self.as_ref().metadata()
+    async fn metadata(&self) -> Result<Self::Metadata> {
+        self.as_ref().metadata().await
     }
 
-    fn to_string(&self) -> std::borrow::Cow<str> {
+    fn to_string(&self) -> Cow<str> {
         self.as_ref().to_string()
     }
 
-    fn to_path_buf(&self) -> Option<PathBuf> {
-        None
+    async fn open(&self, options: OpenOptions) -> Result<Self::File> {
+        self.as_ref().open(options).await
     }
 
-    fn open(&self, options: OpenOptions) -> Result<Self::File> {
-        self.as_ref().open(options)
-    }
-
-    fn read_dir(&self) -> Result<Self::Iterator> {
-        self.as_ref().read_dir()
+    async fn read_dir(&self) -> Result<Self::ReadDir> {
+        self.as_ref().read_dir().await
     }
 
     /// Create a directory at the location by this path
-    fn mkdir(&self) -> Result<()> {
-        self.as_ref().mkdir()
+    async fn create_dir(&self) -> Result<()> {
+        self.as_ref().create_dir().await
     }
     /// Remove a file
-    fn rm(&self) -> Result<()> {
-        self.as_ref().rm()
+    async fn rm(&self) -> Result<()> {
+        self.as_ref().rm().await
     }
     /// Remove a file or directory and all its contents
-    fn rm_all(&self) -> Result<()> {
-        self.as_ref().rm_all()
+    async fn rm_all(&self) -> Result<()> {
+        self.as_ref().rm_all().await
     }
 }
 
-impl VMetadata for Box<dyn VMetadata> {
+impl VFile for BVFileBox {}
+
+impl VMetadata for Box<dyn VMetadata + Send> {
     fn is_dir(&self) -> bool {
         self.as_ref().is_dir()
     }
+    /// Returns true iff this path is a file
     fn is_file(&self) -> bool {
         self.as_ref().is_file()
     }
+    /// Returns the length of the file at this path
     fn len(&self) -> u64 {
         self.as_ref().len()
     }
 }
 
-impl VFile for Box<dyn BFile> {}
-
-#[cfg(test)]
-mod tests {
-
-    use super::super::memory::*;
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let m = MemoryFS::new();
-        let b = vfs_box(m);
-        let mut f = b.path("/test.txt").create().unwrap();
-        f.write(b"Hello, World!").unwrap();
-        f.flush().unwrap();
+impl VFS for Box<dyn BVFS> {
+    type Path = BVPathBox;
+    fn path(&self, path: &str) -> Self::Path {
+        self.as_ref().path(path)
     }
+}
+
+pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> Box<dyn BVFS>
+where
+    <V::Path as VPath>::ReadDir: Send,
+    <V::Path as VPath>::Metadata: Send,
+{
+    Box::new(VFSBox(v))
+}
+
+pub fn path_box<V: VPath + 'static>(path: V) -> BVPathBox
+where
+    V::ReadDir: Send,
+    V::Metadata: Send,
+{
+    Box::new(VPathBox(path))
 }

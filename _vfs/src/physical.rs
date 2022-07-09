@@ -1,16 +1,20 @@
 use super::traits::{OpenOptions, VFile, VMetadata, VPath, VFS};
+use async_fs::{File, OpenOptions as FSOpenOptions};
+use async_trait::async_trait;
+use blocking::unblock;
+use futures_lite::Stream;
 use pathutils;
+use pin_project::pin_project;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
-use std::fs::{
-    canonicalize, remove_dir, remove_dir_all, remove_file, DirBuilder, File, Metadata,
-    OpenOptions as FSOpenOptions, ReadDir,
-};
+use std::fs::{canonicalize, Metadata};
 use std::io::Result;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
-impl VFile for std::fs::File {}
+impl VFile for File {}
 
 /// A "physical" file system implementation using the underlying OS file system
 #[derive(Debug, Clone)]
@@ -29,6 +33,10 @@ impl PhysicalFS {
         Ok(PhysicalFS {
             root: Arc::new(abs),
         })
+    }
+
+    pub fn root(&self) -> &PathBuf {
+        self.root.as_ref()
     }
 }
 
@@ -65,7 +73,7 @@ impl VFS for PhysicalFS {
                 full_path: PathBuf::from(fp),
             };
         }
-        let path = pathutils::resolve("/", path).unwrap(); // format!("/{}", path);
+        let path = pathutils::resolve("/", path).unwrap();
 
         PhysicalPath {
             root: self.root.clone(),
@@ -82,10 +90,11 @@ pub struct PhysicalPath {
     full_path: PathBuf,
 }
 
+#[async_trait]
 impl VPath for PhysicalPath {
     type Metadata = Metadata;
     type File = File;
-    type Iterator = PhysicalReadDir;
+    type ReadDir = PhysicalReadDir;
 
     fn parent(&self) -> Option<Self> {
         match self.full_path.parent() {
@@ -147,67 +156,58 @@ impl VPath for PhysicalPath {
         };
     }
 
-    fn exists(&self) -> bool {
-        self.full_path.exists()
+    async fn exists(&self) -> bool {
+        let path = self.full_path.clone();
+        unblock(move || path.exists()).await
     }
 
-    fn metadata(&self) -> Result<Self::Metadata> {
-        self.full_path.metadata()
-    }
-
-    fn to_path_buf(&self) -> Option<PathBuf> {
-        Some(self.full_path.clone())
+    async fn metadata(&self) -> Result<Self::Metadata> {
+        let path = self.full_path.clone();
+        unblock(move || path.metadata()).await
     }
 
     fn to_string(&self) -> Cow<str> {
         Cow::from(&self.path)
     }
 
-    fn open(&self, o: OpenOptions) -> Result<File> {
-        FSOpenOptions::new()
+    async fn open(&self, o: OpenOptions) -> Result<File> {
+        let file = FSOpenOptions::new()
             .write(o.write)
             .create(o.create)
             .read(o.read)
             .append(o.append)
             .truncate(o.truncate)
             .open(&self.full_path)
+            .await?;
+
+        Ok(file)
     }
 
-    fn read_dir(&self) -> Result<PhysicalReadDir> {
-        self.full_path.read_dir().map(|inner| PhysicalReadDir {
-            inner: inner,
-            root: self.root.clone(),
-        })
+    async fn read_dir(&self) -> Result<PhysicalReadDir> {
+        let root = self.root.clone();
+
+        let inner = async_fs::read_dir(&self.full_path).await?;
+
+        Ok(PhysicalReadDir { inner, root: root })
     }
 
-    // fn create(&self, options: OpenOptions) -> Result<File> {
-    //     File::create(&self.full_path)
-    // }
-
-    // fn append(&self) -> Result<File> {
-    //     FSOpenOptions::new()
-    //         .write(true)
-    //         .append(true)
-    //         .open(&self.full_path)
-    // }
-
-    fn mkdir(&self) -> Result<()> {
-        DirBuilder::new().recursive(true).create(&self.full_path)
+    async fn create_dir(&self) -> Result<()> {
+        async_fs::create_dir_all(self.full_path.clone()).await
     }
 
-    fn rm(&self) -> Result<()> {
+    async fn rm(&self) -> Result<()> {
         if self.full_path.is_dir() {
-            remove_dir(&self.full_path)
+            async_fs::remove_dir(self.full_path.clone()).await
         } else {
-            remove_file(&self.full_path)
+            async_fs::remove_file(self.full_path.clone()).await
         }
     }
 
-    fn rm_all(&self) -> Result<()> {
+    async fn rm_all(&self) -> Result<()> {
         if self.full_path.is_dir() {
-            remove_dir_all(&self.full_path)
+            async_fs::remove_dir_all(self.full_path.clone()).await
         } else {
-            remove_file(&self.full_path)
+            async_fs::remove_file(self.full_path.clone()).await
         }
     }
 }
@@ -222,40 +222,49 @@ impl Debug for PhysicalPath {
     }
 }
 
+#[pin_project]
 #[derive(Debug)]
 pub struct PhysicalReadDir {
-    inner: ReadDir,
+    #[pin]
+    inner: async_fs::ReadDir,
     root: Arc<PathBuf>,
 }
 
-impl Iterator for PhysicalReadDir {
+impl Stream for PhysicalReadDir {
     type Item = Result<PhysicalPath>;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|result| {
-            result.map(|entry| {
-                let fullp = entry.path();
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+
+        match this.inner.poll_next(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(Ok(s))) => {
+                let fullp = s.path();
                 let path = fullp
                     .to_str()
                     .unwrap()
-                    .replace(self.root.to_str().unwrap(), "");
+                    .replace(this.root.to_str().unwrap(), "");
 
-                PhysicalPath {
-                    root: self.root.clone(),
+                Poll::Ready(Some(Ok(PhysicalPath {
+                    root: this.root.clone(),
                     full_path: fullp,
                     path: path,
-                }
-            })
-        })
+                })))
+            }
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Result};
+    use std::io::Result;
     use std::path::PathBuf;
 
     use super::*;
     use super::{OpenOptions, VPath};
+    use crate::VFSExt;
+    use futures::{executor::block_on, io::AsyncReadExt, StreamExt};
 
     #[test]
     fn to_string() {
@@ -269,15 +278,17 @@ mod tests {
 
     #[test]
     fn read_file() {
-        let vfs = PhysicalFS::new(".").unwrap();
-        let path = vfs.path("Cargo.toml");
-        let mut file = path.open(OpenOptions::new().read(true)).unwrap();
-        let mut string: String = "".to_owned();
-        file.read_to_string(&mut string).unwrap();
-        assert!(string.len() > 10);
-        assert!(path.exists());
-        assert!(path.metadata().unwrap().is_file());
-        assert!(PathBuf::from(".").metadata().unwrap().is_dir());
+        block_on(async {
+            let vfs = PhysicalFS::new(".").unwrap();
+            let path = vfs.path("Cargo.toml");
+            let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
+            let mut string: String = "".to_owned();
+            file.read_to_string(&mut string).await.unwrap();
+            assert!(string.len() > 10);
+            assert!(path.exists().await);
+            assert!(path.metadata().await.unwrap().is_file());
+            assert!(PathBuf::from(".").metadata().unwrap().is_dir());
+        });
     }
     #[test]
     fn parent() {
@@ -297,10 +308,19 @@ mod tests {
 
     #[test]
     fn read_dir() {
-        let vfs = PhysicalFS::new(".").unwrap();
-        let src = vfs.path("./src");
-        let _entries: Vec<Result<PhysicalPath>> = src.read_dir().unwrap().collect();
-        //println!("{:#?}", entries);
+        block_on(async {
+            let vfs = PhysicalFS::new(".").unwrap();
+            let src = vfs.path("./src");
+            let _entries: Vec<Result<PhysicalPath>> = src.read_dir().await.unwrap().collect().await;
+        })
+    }
+
+    #[test]
+    fn readfile() {
+        block_on(async {
+            let vfs = PhysicalFS::new(".").unwrap();
+            let src = vfs.read("./src/lib.rs").await.unwrap();
+        })
     }
 
     #[test]
@@ -311,8 +331,9 @@ mod tests {
         assert_eq!(src.extension(), Some(".rs".to_owned()));
     }
 
-    #[test]
-    fn resolve() {
+    /*
+    #[tokio::test]
+    async fn resolve() {
         let vfs = PhysicalFS::new(".").unwrap();
         let src = vfs.path("./src/test");
         let rel = src.resolve("../");
@@ -320,12 +341,5 @@ mod tests {
 
         let rel = src.resolve("../../");
         assert_eq!(rel.to_string().as_ref(), "/");
-    }
-
-    // #[test]
-    // fn to_path_buf() {
-    //     let vfs = PhysicalFS::new(".").unwrap();
-    //     let src = vfs.path("./src/lib.rs");
-    //     //assert_eq!(Some(src.clone()), src.to_path_buf());
-    // }
+    }*/
 }

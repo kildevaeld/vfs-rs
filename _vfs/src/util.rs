@@ -84,7 +84,7 @@ where
     D::Metadata: Send,
 {
     Ok(copy_path(source, dest, |source, dest| async move {
-        futures_io::copy(source.file, dest.file)
+        futures_lite::io::copy(source.file, dest.file)
             .await
             .map(|_| ())
             .map_err(CopyError::Io)

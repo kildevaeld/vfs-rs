@@ -1,32 +1,21 @@
-#[cfg(feature = "boxed")]
-use super::boxed;
-use super::VPath;
+use crate::{vpath_box, OpenOptions, VPath, VPathBox};
 use async_trait::async_trait;
-use futures::TryStreamExt;
+use std::io::Result;
 
 #[async_trait]
 pub trait VPathExt: VPath {
-    #[cfg(feature = "boxed")]
-    fn boxed(self) -> Box<dyn boxed::BVPath>
+    async fn create(&self) -> Result<Self::File> {
+        self.open(OpenOptions::default().create(true)).await
+    }
+
+    fn boxed(self) -> VPathBox
     where
         Self: Sized + 'static,
         <Self as VPath>::ReadDir: Send,
+        <Self as VPath>::Metadata: Send,
     {
-        boxed::path_box(self)
-    }
-
-    async fn resolve_with(&self, basename: &str, exts: &[&str]) -> Result<Option<Self>> {
-        for ext in exts {
-            let file_name = pathutils::join(basename, ext);
-            let path = self.resolve(file_name);
-            if !path.exists().await {
-                return Ok(None);
-            } else {
-                Ok(Some(path))
-            }
-        }
-        None
+        vpath_box(self)
     }
 }
 
-impl<T> VPathExt for T where T: VPath {}
+impl<P> VPathExt for P where P: VPath {}
