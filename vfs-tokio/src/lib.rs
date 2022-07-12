@@ -2,7 +2,7 @@ use async_compat::Compat;
 use async_trait::async_trait;
 use futures_core::{ready, Stream};
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
-use relative_path::RelativePathBuf;
+use relative_path::{RelativePath, RelativePathBuf};
 use std::{
     fmt::{self, Debug},
     fs::Metadata,
@@ -303,6 +303,40 @@ impl Stream for PhysicalReadDir {
             }
             Err(err) => Poll::Ready(Some(Err(err))),
         }
+    }
+}
+
+impl<'a> TryFrom<&'a Path> for PhysicalPath {
+    type Error = io::Error;
+    fn try_from(path: &'a Path) -> io::Result<Self> {
+        let mut path = path.to_path_buf();
+        if !path.is_absolute() {
+            path = std::fs::canonicalize(path)?;
+        }
+
+        if path.is_dir() {
+            Ok(PhysicalPath {
+                root: Arc::new(path.clone()),
+                path: RelativePathBuf::from("."),
+                fullpath: path,
+            })
+        } else {
+            let filename = path.file_name().expect("filename");
+            let parent = path.parent().unwrap_or_else(|| Path::new("/"));
+
+            Ok(PhysicalPath {
+                root: Arc::new(parent.to_path_buf()),
+                path: RelativePathBuf::from(filename.to_str().expect("filename")),
+                fullpath: path,
+            })
+        }
+    }
+}
+
+impl TryFrom<PathBuf> for PhysicalPath {
+    type Error = io::Error;
+    fn try_from(path: PathBuf) -> io::Result<Self> {
+        path.as_path().try_into()
     }
 }
 
