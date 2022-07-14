@@ -154,6 +154,12 @@ pub struct PhysicalPath {
     fullpath: PathBuf,
 }
 
+impl PhysicalPath {
+    pub fn path(&self) -> &Path {
+        &self.fullpath
+    }
+}
+
 #[async_trait]
 impl VPath for PhysicalPath {
     type Metadata = PhysicalMetadata;
