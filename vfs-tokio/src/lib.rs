@@ -2,7 +2,7 @@ use async_compat::Compat;
 use async_trait::async_trait;
 use futures_core::{ready, Stream};
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
-use relative_path::{RelativePath, RelativePathBuf};
+use relative_path::RelativePathBuf;
 use std::{
     fmt::{self, Debug},
     fs::Metadata,
@@ -147,7 +147,7 @@ impl VFS for PhysicalFS {
     }
 }
 
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PhysicalPath {
     root: Arc<PathBuf>,
     path: RelativePathBuf,
