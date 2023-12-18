@@ -18,6 +18,8 @@ impl fmt::Display for Error {
     }
 }
 
+impl avagarden::error::Error for Error {}
+
 impl Error {
     pub const fn new_const(kind: ErrorKind, message: &'static str) -> Error {
         Error { kind, message }

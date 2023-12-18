@@ -1,13 +1,7 @@
 use super::{file::VFile, path::VPath};
 use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VMetadata, VFS};
-use async_trait::async_trait;
-use core::{
-    pin::Pin,
-    task::{Context, Poll},
-};
-use futures_core::{ready, Stream};
-// use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, SeekFrom};
 use alloc::{boxed::Box, string::String};
+use async_trait::async_trait;
 use pin_project_lite::pin_project;
 
 pub trait BVFS: Sync + Send {
@@ -62,7 +56,6 @@ impl<V: VFS> BVFS for BVFSBox<V>
 where
     V: Send,
     V::Path: 'static + Send + Sync + Clone,
-    <V::Path as VPath>::ReadDir: Send,
 {
     fn path(&self, path: &str) -> Result<VPathBox, Error> {
         Ok(Box::new(BVPathBox(self.0.path(path)?)))
@@ -75,7 +68,6 @@ struct BVPathBox<P>(P);
 impl<P: Clone> BVPath for BVPathBox<P>
 where
     P: Send + Sync + VPath + 'static,
-    P::ReadDir: Send,
 {
     fn file_name(&self) -> Option<&str> {
         self.0.file_name()
@@ -174,23 +166,23 @@ where
 
 impl VFile for Box<dyn VFile> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
-        (*self).read(buf)
+        (**self).read(buf)
     }
 
     fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
-        (*self).write(buf)
+        (**self).write(buf)
     }
 
     fn flush(&mut self) -> Result<(), Error> {
-        (*self).flush()
+        (**self).flush()
     }
 
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
-        (*self).seek(pos)
+        (**self).seek(pos)
     }
 
     fn close(&mut self) -> Result<(), Error> {
-        (*self).close()
+        (**self).close()
     }
 }
 
@@ -211,7 +203,6 @@ impl<S, P> Iterator for ReadDirBox<S>
 where
     S: Iterator<Item = Result<P, Error>>,
     P: VPath + 'static,
-    P::ReadDir: Send,
 {
     type Item = Result<VPathBox, Error>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -298,10 +289,9 @@ impl VFS for Box<dyn BVFS> {
     }
 }
 
-pub fn vfs_box<V: VFS + 'static + Send + Clone>(v: V) -> VFSBox
+pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> VFSBox
 where
     V::Path: Send + Sync + Clone,
-    <V::Path as VPath>::ReadDir: Send,
 {
     Box::new(BVFSBox(v))
 }
@@ -309,7 +299,6 @@ where
 pub fn vpath_box<V: VPath + 'static + Clone>(path: V) -> VPathBox
 where
     V: Send + Sync + Clone,
-    V::ReadDir: Send,
 {
     Box::new(BVPathBox(path))
 }
