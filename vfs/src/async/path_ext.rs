@@ -1,10 +1,9 @@
-use crate::{vpath_box, OpenOptions, VPath, VPathBox};
+use super::{vpath_box, OpenOptions, VPath, VPathBox};
 use async_trait::async_trait;
-use std::io::Result;
 
 #[async_trait]
 pub trait VPathExt: VPath {
-    async fn create(&self) -> Result<Self::File> {
+    async fn create(&self) -> Result<Self::File, Erro> {
         self.open(OpenOptions::default().create(true)).await
     }
 

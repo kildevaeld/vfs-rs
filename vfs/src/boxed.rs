@@ -1,27 +1,25 @@
-use crate::{OpenOptions, VFile, VMetadata, VPath, VFS};
+use super::{file::VFile, path::VPath};
+use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VMetadata, VFS};
 use async_trait::async_trait;
-use futures_core::{ready, Stream};
-use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, SeekFrom};
-use pin_project_lite::pin_project;
-use std::{
-    io::Result,
+use core::{
     pin::Pin,
     task::{Context, Poll},
 };
+use futures_core::{ready, Stream};
+// use futures_io::{AsyncRead, AsyncSeek, AsyncWrite, SeekFrom};
+use alloc::{boxed::Box, string::String};
+use pin_project_lite::pin_project;
 
 pub trait BVFS: Sync + Send {
-    fn path(&self, path: &str) -> Result<VPathBox>;
+    fn path(&self, path: &str) -> Result<VPathBox, Error>;
 }
 
 pub type VFSBox = Box<dyn BVFS>;
 
 pub type VPathBox = Box<dyn BVPath>;
 
-pub type VMetadataBox = Box<dyn VMetadata + Send>;
+pub type VFileBox = Box<dyn VFile>;
 
-pub type VFileBox = Pin<Box<dyn VFile>>;
-
-#[async_trait]
 pub trait BVPath: Send + Sync {
     fn file_name(&self) -> Option<&str>;
 
@@ -29,31 +27,31 @@ pub trait BVPath: Send + Sync {
     fn extension(&self) -> Option<&str>;
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Result<VPathBox>;
+    fn resolve(&self, path: &str) -> Result<VPathBox, Error>;
 
     /// Get the parent path
     fn parent(&self) -> Option<VPathBox>;
 
     /// Check if the file existst
-    async fn exists(&self) -> bool;
+    fn exists(&self) -> bool;
 
     /// Get the file's metadata
-    async fn metadata(&self) -> Result<VMetadataBox>;
+    fn metadata(&self) -> Result<Metadata, Error>;
 
     fn to_string(&self) -> String;
 
     // fn to_path_buf(&self) -> Option<PathBuf>;
 
-    async fn open(&self, options: OpenOptions) -> Result<VFileBox>;
+    fn open(&self, options: OpenOptions) -> Result<VFileBox, Error>;
 
-    async fn read_dir(&self) -> Result<Pin<Box<dyn Stream<Item = Result<VPathBox>> + Send>>>;
+    fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<VPathBox, Error>>>, Error>;
 
     /// Create a directory at the location by this path
-    async fn create_dir(&self) -> Result<()>;
+    fn create_dir(&self) -> Result<(), Error>;
     /// Remove a file
-    async fn rm(&self) -> Result<()>;
+    fn rm(&self) -> Result<(), Error>;
     /// Remove a file or directory and all its contents
-    async fn rm_all(&self) -> Result<()>;
+    fn rm_all(&self) -> Result<(), Error>;
 
     fn box_clone(&self) -> VPathBox;
 }
@@ -63,11 +61,10 @@ struct BVFSBox<V>(V);
 impl<V: VFS> BVFS for BVFSBox<V>
 where
     V: Send,
-    V::Path: 'static + Send + Sync,
+    V::Path: 'static + Send + Sync + Clone,
     <V::Path as VPath>::ReadDir: Send,
-    <V::Path as VPath>::Metadata: Send,
 {
-    fn path(&self, path: &str) -> Result<VPathBox> {
+    fn path(&self, path: &str) -> Result<VPathBox, Error> {
         Ok(Box::new(BVPathBox(self.0.path(path)?)))
     }
 }
@@ -75,11 +72,10 @@ where
 struct BVPathBox<P>(P);
 
 #[async_trait]
-impl<P> BVPath for BVPathBox<P>
+impl<P: Clone> BVPath for BVPathBox<P>
 where
     P: Send + Sync + VPath + 'static,
     P::ReadDir: Send,
-    P::Metadata: Send,
 {
     fn file_name(&self) -> Option<&str> {
         self.0.file_name()
@@ -91,7 +87,7 @@ where
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Result<VPathBox> {
+    fn resolve(&self, path: &str) -> Result<VPathBox, Error> {
         Ok(Box::new(BVPathBox(self.0.resolve(path)?)))
     }
 
@@ -101,15 +97,15 @@ where
     }
 
     /// Check if the file existst
-    async fn exists(&self) -> bool {
-        self.0.exists().await
+    fn exists(&self) -> bool {
+        self.0.exists()
     }
 
     /// Get the file's metadata
-    async fn metadata(&self) -> Result<VMetadataBox> {
+    fn metadata(&self) -> Result<Metadata, Error> {
         let req = self.0.metadata();
-        match req.await {
-            Ok(meta) => Ok(Box::new(BVMetadataBox(meta)) as VMetadataBox),
+        match req {
+            Ok(meta) => Ok(meta),
             Err(err) => Err(err),
         }
         // pin_mut!(req);
@@ -120,34 +116,36 @@ where
         self.0.to_string()
     }
 
-    async fn open(&self, options: OpenOptions) -> Result<VFileBox> {
+    fn open(&self, options: OpenOptions) -> Result<VFileBox, Error> {
         let req = self.0.open(options);
-        match req.await {
-            Ok(file) => Ok(Box::pin(BVFileBox::new(file)) as VFileBox),
+        match req {
+            Ok(file) => Ok(Box::new(file) as VFileBox),
             Err(err) => Err(err),
         }
     }
 
-    async fn read_dir(&self) -> Result<Pin<Box<dyn Stream<Item = Result<VPathBox>> + Send>>> {
+    fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<VPathBox, Error>>>, Error> {
         let req = self.0.read_dir();
-        match req.await {
-            Ok(p) => Ok(Box::pin(ReadDirBox::new(p))
-                as Pin<Box<dyn Stream<Item = Result<VPathBox>> + Send>>),
+        match req {
+            Ok(p) => {
+                Ok(Box::new(ReadDirBox::new(p))
+                    as Box<dyn Iterator<Item = Result<VPathBox, Error>>>)
+            }
             Err(err) => Err(err),
         }
     }
 
     /// Create a directory at the location by this path
-    async fn create_dir(&self) -> Result<()> {
-        self.0.create_dir().await
+    fn create_dir(&self) -> Result<(), Error> {
+        self.0.create_dir()
     }
     /// Remove a file
-    async fn rm(&self) -> Result<()> {
-        self.0.rm().await
+    fn rm(&self) -> Result<(), Error> {
+        self.0.rm()
     }
     /// Remove a file or directory and all its contents
-    async fn rm_all(&self) -> Result<()> {
-        self.0.rm_all().await
+    fn rm_all(&self) -> Result<(), Error> {
+        self.0.rm_all()
     }
 
     fn box_clone(&self) -> VPathBox {
@@ -174,59 +172,27 @@ where
     }
 }
 
-pin_project! {
-    struct BVFileBox<F> {
-        #[pin]
-        future:F
+impl VFile for Box<dyn VFile> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
+        (*self).read(buf)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        (*self).write(buf)
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        (*self).flush()
+    }
+
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
+        (*self).seek(pos)
+    }
+
+    fn close(&mut self) -> Result<(), Error> {
+        (*self).close()
     }
 }
-
-impl<F> BVFileBox<F> {
-    pub fn new(future: F) -> Self {
-        Self { future }
-    }
-}
-
-impl<F> AsyncRead for BVFileBox<F>
-where
-    F: VFile,
-{
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<Result<usize>> {
-        self.project().future.poll_read(cx, buf)
-    }
-}
-
-impl<F> AsyncWrite for BVFileBox<F>
-where
-    F: VFile,
-{
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        self.project().future.poll_write(cx, buf)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.project().future.poll_flush(cx)
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.project().future.poll_close(cx)
-    }
-}
-
-impl<F> AsyncSeek for BVFileBox<F>
-where
-    F: VFile,
-{
-    fn poll_seek(self: Pin<&mut Self>, cx: &mut Context<'_>, pos: SeekFrom) -> Poll<Result<u64>> {
-        self.project().future.poll_seek(cx, pos)
-    }
-}
-
-impl<F> VFile for BVFileBox<F> where F: VFile {}
 
 pin_project! {
     struct ReadDirBox<S> {
@@ -241,20 +207,16 @@ impl<S> ReadDirBox<S> {
     }
 }
 
-impl<S, P> Stream for ReadDirBox<S>
+impl<S, P> Iterator for ReadDirBox<S>
 where
-    S: Stream<Item = Result<P>> + Send,
+    S: Iterator<Item = Result<P, Error>>,
     P: VPath + 'static,
     P::ReadDir: Send,
-    P::Metadata: Send,
 {
-    type Item = Result<VPathBox>;
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(self.project().stream.poll_next(cx)) {
-            Some(Ok(item)) => Poll::Ready(Some(Ok(Box::new(BVPathBox(item))))),
-            Some(Err(err)) => Poll::Ready(Some(Err(err))),
-            None => Poll::Ready(None),
-        }
+    type Item = Result<VPathBox, Error>;
+    fn next(&mut self) -> Option<Self::Item> {
+        //self.stream.next().map(|m| Box::new())
+        todo!()
     }
 }
 
@@ -270,11 +232,9 @@ impl Clone for VPathBox {
     }
 }
 
-#[async_trait]
 impl VPath for VPathBox {
-    type Metadata = Box<dyn VMetadata + Send>;
     type File = VFileBox;
-    type ReadDir = Pin<Box<dyn Stream<Item = Result<VPathBox>> + Send>>;
+    type ReadDir = Box<dyn Iterator<Item = Result<VPathBox, Error>>>;
 
     fn file_name(&self) -> Option<&str> {
         self.as_ref().file_name()
@@ -286,7 +246,7 @@ impl VPath for VPathBox {
     }
 
     /// append a segment to this path
-    fn resolve(&self, path: &str) -> Result<Self> {
+    fn resolve(&self, path: &str) -> Result<Self, Error> {
         self.as_ref().resolve(path)
     }
 
@@ -296,76 +256,60 @@ impl VPath for VPathBox {
     }
 
     /// Check if the file existst
-    async fn exists(&self) -> bool {
-        self.as_ref().exists().await
+    fn exists(&self) -> bool {
+        self.as_ref().exists()
     }
 
     /// Get the file's metadata
-    async fn metadata(&self) -> Result<Self::Metadata> {
-        self.as_ref().metadata().await
+    fn metadata(&self) -> Result<Metadata, Error> {
+        self.as_ref().metadata()
     }
 
     fn to_string(&self) -> String {
         self.as_ref().to_string()
     }
 
-    async fn open(&self, options: OpenOptions) -> Result<Self::File> {
-        self.as_ref().open(options).await
+    fn open(&self, options: OpenOptions) -> Result<Self::File, Error> {
+        self.as_ref().open(options)
     }
 
-    async fn read_dir(&self) -> Result<Self::ReadDir> {
-        self.as_ref().read_dir().await
+    fn read_dir(&self) -> Result<Self::ReadDir, Error> {
+        self.as_ref().read_dir()
     }
 
     /// Create a directory at the location by this path
-    async fn create_dir(&self) -> Result<()> {
-        self.as_ref().create_dir().await
+    fn create_dir(&self) -> Result<(), Error> {
+        self.as_ref().create_dir()
     }
     /// Remove a file
-    async fn rm(&self) -> Result<()> {
-        self.as_ref().rm().await
+    fn rm(&self) -> Result<(), Error> {
+        self.as_ref().rm()
     }
     /// Remove a file or directory and all its contents
-    async fn rm_all(&self) -> Result<()> {
-        self.as_ref().rm_all().await
-    }
-}
-
-impl VFile for VFileBox {}
-
-impl VMetadata for Box<dyn VMetadata + Send> {
-    fn is_dir(&self) -> bool {
-        self.as_ref().is_dir()
-    }
-    /// Returns true iff this path is a file
-    fn is_file(&self) -> bool {
-        self.as_ref().is_file()
-    }
-    /// Returns the length of the file at this path
-    fn len(&self) -> u64 {
-        self.as_ref().len()
+    fn rm_all(&self) -> Result<(), Error> {
+        self.as_ref().rm_all()
     }
 }
 
 impl VFS for Box<dyn BVFS> {
     type Path = VPathBox;
-    fn path(&self, path: &str) -> Result<Self::Path> {
+    fn path(&self, path: &str) -> Result<Self::Path, Error> {
         self.as_ref().path(path)
     }
 }
 
-pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> VFSBox
+pub fn vfs_box<V: VFS + 'static + Send + Clone>(v: V) -> VFSBox
 where
+    V::Path: Send + Sync + Clone,
     <V::Path as VPath>::ReadDir: Send,
-    <V::Path as VPath>::Metadata: Send,
 {
     Box::new(BVFSBox(v))
 }
 
-pub fn vpath_box<V: VPath + 'static>(path: V) -> VPathBox
+pub fn vpath_box<V: VPath + 'static + Clone>(path: V) -> VPathBox
 where
+    V: Send + Sync + Clone,
     V::ReadDir: Send,
-    V::Metadata: Send,
 {
     Box::new(BVPathBox(path))
 }

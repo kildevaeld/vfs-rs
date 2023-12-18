@@ -1,12 +1,24 @@
+#![no_std]
+
+extern crate alloc;
+
 mod boxed;
-mod path_ext;
+mod error;
+mod file;
+mod fs;
+mod path;
 mod types;
 
-#[cfg(feature = "util")]
-pub mod util;
+#[cfg(feature = "async")]
+pub mod r#async;
 
 pub use self::{
-    boxed::{vfs_box, vpath_box, VFSBox, VFileBox, VMetadataBox, VPathBox},
-    path_ext::VPathExt,
+    boxed::*,
+    file::{VFile, VFileExt},
+    fs::*,
+    path::VPath,
     types::*,
 };
+
+#[cfg(feature = "async")]
+pub use r#async::*;
