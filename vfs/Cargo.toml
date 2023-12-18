@@ -8,6 +8,7 @@ version = "0.6.0"
 [features]
 default = ["async"]
 async = ["futures-core", "pin-project-lite"]
+std = ["avagarden/std"]
 
 [dependencies]
 async-trait = "0.1"
