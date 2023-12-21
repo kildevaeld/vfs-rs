@@ -8,7 +8,7 @@ pub trait VFS: Send + Sync {
 pub trait VFSExt: VFS {
     fn boxed(self) -> VFSBox
     where
-        Self: Sized + 'static,
+        Self: Sized + 'static + Clone,
         Self::Path: Send + Sync + Clone,
     {
         vfs_box(self)

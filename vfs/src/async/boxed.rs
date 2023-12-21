@@ -12,6 +12,7 @@ use pin_project_lite::pin_project;
 
 pub trait BVAsyncFS: Sync + Send {
     fn path(&self, path: &str) -> Result<VAsyncPathBox, Error>;
+    fn box_clone(&self) -> VAsyncFSBox;
 }
 
 pub type VAsyncFSBox = Box<dyn BVAsyncFS>;
@@ -63,12 +64,16 @@ struct BVAsyncFSBox<V>(V);
 
 impl<V: VAsyncFS> BVAsyncFS for BVAsyncFSBox<V>
 where
-    V: Send,
+    V: Send + Clone + 'static,
     V::Path: 'static + Send + Sync,
     <V::Path as VAsyncPath>::ReadDir: Send,
 {
     fn path(&self, path: &str) -> Result<VAsyncPathBox, Error> {
         Ok(Box::new(BVAsyncPathBox(self.0.path(path)?)))
+    }
+
+    fn box_clone(&self) -> VAsyncFSBox {
+        Box::new(BVAsyncFSBox(self.0.clone()))
     }
 }
 
@@ -351,6 +356,7 @@ impl VAsyncFS for Box<dyn BVAsyncFS> {
 
 pub fn vafs_box<V: VAsyncFS + 'static + Send>(v: V) -> VAsyncFSBox
 where
+    V: Clone,
     <V::Path as VAsyncPath>::ReadDir: Send,
 {
     Box::new(BVAsyncFSBox(v))

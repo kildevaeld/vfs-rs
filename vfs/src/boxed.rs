@@ -6,6 +6,7 @@ use pin_project_lite::pin_project;
 
 pub trait BVFS: Sync + Send {
     fn path(&self, path: &str) -> Result<VPathBox, Error>;
+    fn box_clone(&self) -> VFSBox;
 }
 
 pub type VFSBox = Box<dyn BVFS>;
@@ -54,11 +55,15 @@ struct BVFSBox<V>(V);
 
 impl<V: VFS> BVFS for BVFSBox<V>
 where
-    V: Send,
+    V: Send + Clone + 'static,
     V::Path: 'static + Send + Sync + Clone,
 {
     fn path(&self, path: &str) -> Result<VPathBox, Error> {
         Ok(Box::new(BVPathBox(self.0.path(path)?)))
+    }
+
+    fn box_clone(&self) -> VFSBox {
+        Box::new(BVFSBox(self.0.clone()))
     }
 }
 
@@ -289,8 +294,15 @@ impl VFS for Box<dyn BVFS> {
     }
 }
 
+impl Clone for Box<dyn BVFS> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
+}
+
 pub fn vfs_box<V: VFS + 'static + Send>(v: V) -> VFSBox
 where
+    V: Clone,
     V::Path: Send + Sync + Clone,
 {
     Box::new(BVFSBox(v))
