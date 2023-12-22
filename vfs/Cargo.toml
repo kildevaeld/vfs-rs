@@ -7,11 +7,11 @@ version = "0.6.0"
 
 [features]
 default = ["std"]
-async = ["futures-core", "pin-project-lite"]
+async = ["futures-core", "pin-project-lite", "async-trait"]
 std = ["avagarden/std"]
 
 [dependencies]
-async-trait = { version = "0.1" }
+async-trait = { version = "0.1", optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 pin-project-lite = { version = "0.2", optional = true }
 avagarden = { git = "https://github.com/kildevaeld/avagarden" }

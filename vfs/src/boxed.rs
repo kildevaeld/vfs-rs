@@ -1,7 +1,6 @@
 use super::{file::VFile, path::VPath};
 use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VFS};
 use alloc::{boxed::Box, string::String};
-use async_trait::async_trait;
 
 pub trait BVFS: Sync + Send {
     fn path(&self, path: &str) -> Result<VPathBox, Error>;
@@ -68,7 +67,6 @@ where
 
 struct BVPathBox<P>(P);
 
-#[async_trait]
 impl<P: Clone> BVPath for BVPathBox<P>
 where
     P: Send + Sync + VPath + 'static,
