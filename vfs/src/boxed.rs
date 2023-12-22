@@ -1,8 +1,7 @@
 use super::{file::VFile, path::VPath};
-use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VMetadata, VFS};
+use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VFS};
 use alloc::{boxed::Box, string::String};
 use async_trait::async_trait;
-use pin_project_lite::pin_project;
 
 pub trait BVFS: Sync + Send {
     fn path(&self, path: &str) -> Result<VPathBox, Error>;
@@ -124,10 +123,11 @@ where
     fn read_dir(&self) -> Result<Box<dyn Iterator<Item = Result<VPathBox, Error>>>, Error> {
         let req = self.0.read_dir();
         match req {
-            Ok(p) => {
-                Ok(Box::new(ReadDirBox::new(p))
-                    as Box<dyn Iterator<Item = Result<VPathBox, Error>>>)
-            }
+            Ok(p) => Ok(Box::new(p.map(|ret| match ret {
+                Ok(ret) => Ok(vpath_box(ret)),
+                Err(err) => Err(err),
+            }))
+                as Box<dyn Iterator<Item = Result<VPathBox, Error>>>),
             Err(err) => Err(err),
         }
     }
@@ -150,25 +150,6 @@ where
     }
 }
 
-struct BVMetadataBox<M>(M);
-
-impl<M> VMetadata for BVMetadataBox<M>
-where
-    M: VMetadata,
-{
-    fn is_dir(&self) -> bool {
-        self.0.is_dir()
-    }
-    /// Returns true iff this path is a file
-    fn is_file(&self) -> bool {
-        self.0.is_file()
-    }
-    /// Returns the length of the file at this path
-    fn len(&self) -> u64 {
-        self.0.len()
-    }
-}
-
 impl VFile for Box<dyn VFile> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Error> {
         (**self).read(buf)
@@ -188,31 +169,6 @@ impl VFile for Box<dyn VFile> {
 
     fn close(&mut self) -> Result<(), Error> {
         (**self).close()
-    }
-}
-
-pin_project! {
-    struct ReadDirBox<S> {
-        #[pin]
-        stream: S
-    }
-}
-
-impl<S> ReadDirBox<S> {
-    pub fn new(stream: S) -> Self {
-        Self { stream }
-    }
-}
-
-impl<S, P> Iterator for ReadDirBox<S>
-where
-    S: Iterator<Item = Result<P, Error>>,
-    P: VPath + 'static,
-{
-    type Item = Result<VPathBox, Error>;
-    fn next(&mut self) -> Option<Self::Item> {
-        //self.stream.next().map(|m| Box::new())
-        todo!()
     }
 }
 

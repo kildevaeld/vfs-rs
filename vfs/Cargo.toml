@@ -6,12 +6,12 @@ version = "0.6.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["async"]
+default = ["std"]
 async = ["futures-core", "pin-project-lite"]
 std = ["avagarden/std"]
 
 [dependencies]
-async-trait = "0.1"
+async-trait = { version = "0.1" }
 futures-core = { version = "0.3", default-features = false, optional = true }
 pin-project-lite = { version = "0.2", optional = true }
 avagarden = { git = "https://github.com/kildevaeld/avagarden" }
