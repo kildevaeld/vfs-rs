@@ -17,6 +17,12 @@ pub trait BVAsyncFS: Sync + Send {
 
 pub type VAsyncFSBox = Box<dyn BVAsyncFS>;
 
+impl Clone for VAsyncFSBox {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
+}
+
 pub type VAsyncPathBox = Box<dyn BVAsyncPath>;
 
 pub type VAsyncFileBox = Pin<Box<dyn VAsyncFile>>;
