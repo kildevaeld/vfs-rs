@@ -12,9 +12,15 @@ pub struct Error {
     message: &'static str,
 }
 
+enum Message {
+    Static(&'static str),
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self.kind {
+            ErrorKind::Interrupted => write!(f, ""),
+        }
     }
 }
 
