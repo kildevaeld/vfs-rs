@@ -18,9 +18,7 @@ enum Message {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            ErrorKind::Interrupted => write!(f, ""),
-        }
+        todo!()
     }
 }
 
