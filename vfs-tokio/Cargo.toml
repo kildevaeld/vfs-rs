@@ -6,16 +6,16 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-compat = {version = "0.2"}
-async-trait = "0.1"
-futures-core = {version = "0.3", default-features = false}
-futures-io = {version = "0.3"}
-pathdiff = {version = "0.2"}
+async-compat = { version = "0.2" }
+# async-trait = "0.1"
+futures-core = { version = "0.3", default-features = false }
+futures-io = { version = "0.3" }
+pathdiff = { version = "0.2" }
 pin-project-lite = "0.2"
-relative-path = {version = "1"}
-tokio = {version = "1", features = ["fs", "sync"]}
-vfs = {path = "../vfs"}
+relative-path = { version = "1" }
+tokio = { version = "1", features = ["fs", "sync"] }
+vfs = { path = "../vfs", features = ["async", "std"] }
 
 [dev-dependencies]
-futures-util = {version = "0.3", features = ["io"]}
-tokio = {version = "1", features = ["fs", "macros", "rt"]}
+futures-util = { version = "0.3", features = ["io"] }
+tokio = { version = "1", features = ["fs", "macros", "rt"] }

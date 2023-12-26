@@ -1,11 +1,23 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileType {
     Dir,
     File,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Metadata {
     pub size: u64,
     pub kind: FileType,
+}
+
+impl Metadata {
+    pub fn is_file(&self) -> bool {
+        matches!(self.kind, FileType::File)
+    }
+
+    pub fn id_dir(&self) -> bool {
+        matches!(self.kind, FileType::Dir)
+    }
 }
 
 #[derive(Copy, PartialEq, Eq, Clone, Debug)]
@@ -26,6 +38,28 @@ pub enum SeekFrom {
     /// It is possible to seek beyond the end of an object, but it's an error to
     /// seek before byte 0.
     Current(i64),
+}
+
+#[cfg(feature = "std")]
+impl From<std::io::SeekFrom> for SeekFrom {
+    fn from(value: std::io::SeekFrom) -> Self {
+        match value {
+            std::io::SeekFrom::Start(i) => SeekFrom::Start(i),
+            std::io::SeekFrom::End(i) => SeekFrom::End(i),
+            std::io::SeekFrom::Current(i) => SeekFrom::Current(i),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<SeekFrom> for std::io::SeekFrom {
+    fn from(value: SeekFrom) -> Self {
+        match value {
+            SeekFrom::Start(i) => std::io::SeekFrom::Start(i),
+            SeekFrom::End(i) => std::io::SeekFrom::End(i),
+            SeekFrom::Current(i) => std::io::SeekFrom::Current(i),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]

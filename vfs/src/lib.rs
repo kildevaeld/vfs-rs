@@ -2,8 +2,11 @@
 
 extern crate alloc;
 
+#[cfg(feature = "std")]
+extern crate std;
+
 mod boxed;
-mod error;
+pub mod error;
 mod file;
 mod fs;
 mod path;
@@ -14,6 +17,8 @@ pub mod r#async;
 
 pub use self::{
     boxed::*,
+    error::Error,
+    error::Result,
     file::{VFile, VFileExt},
     fs::*,
     path::VPath,
@@ -22,3 +27,6 @@ pub use self::{
 
 #[cfg(feature = "async")]
 pub use r#async::*;
+
+#[cfg(feature = "async")]
+pub use async_trait::async_trait;

@@ -1,19 +1,22 @@
+// use async_trait::async_trait;
 use async_compat::Compat;
-use async_trait::async_trait;
 use futures_core::{ready, Stream};
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
 use relative_path::RelativePathBuf;
 use std::{
     fmt::{self, Debug},
-    fs::Metadata,
-    io::{self, Result},
+    io::{self},
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 use tokio::fs::{canonicalize, File, OpenOptions as FSOpenOptions};
-use vfs::{OpenOptions, VFile, VMetadata, VPath, VFS};
+use vfs::{
+    async_trait,
+    error::{ErrorKind, Result},
+    Error, FileType, Metadata, OpenOptions, SeekFrom, VAsyncFS, VAsyncFile, VAsyncPath,
+};
 
 pin_project_lite::pin_project! {
     pub struct PhysicalFile {
@@ -23,6 +26,7 @@ pin_project_lite::pin_project! {
 
 }
 
+/*
 impl AsyncRead for PhysicalFile {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -65,7 +69,42 @@ impl AsyncSeek for PhysicalFile {
     }
 }
 
-impl VFile for PhysicalFile {}
+ */
+
+impl VAsyncFile for PhysicalFile {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<Result<usize>> {
+        self.project()
+            .file
+            .poll_read(cx, buf)
+            .map_err(|err| err.into())
+    }
+
+    fn poll_seek(self: Pin<&mut Self>, cx: &mut Context<'_>, pos: SeekFrom) -> Poll<Result<u64>> {
+        self.project()
+            .file
+            .poll_seek(cx, pos.into())
+            .map_err(|err| err.into())
+    }
+
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
+        self.project()
+            .file
+            .poll_write(cx, buf)
+            .map_err(|err| err.into())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.project().file.poll_flush(cx).map_err(|err| err.into())
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.project().file.poll_close(cx).map_err(|err| err.into())
+    }
+}
 
 /// A "physical" file system implementation using the underlying OS file system
 #[derive(Debug, Clone)]
@@ -93,19 +132,7 @@ impl PhysicalFS {
 
 pub struct PhysicalMetadata(Metadata);
 
-impl VMetadata for PhysicalMetadata {
-    fn is_dir(&self) -> bool {
-        self.0.is_dir()
-    }
-    fn is_file(&self) -> bool {
-        self.0.is_file()
-    }
-    fn len(&self) -> u64 {
-        self.0.len()
-    }
-}
-
-impl VFS for PhysicalFS {
+impl VAsyncFS for PhysicalFS {
     type Path = PhysicalPath;
 
     fn path(&self, path: &str) -> Result<PhysicalPath> {
@@ -114,8 +141,8 @@ impl VFS for PhysicalFS {
         let fullpath = path.to_logical_path(self.root.as_path());
 
         if !fullpath.starts_with(self.root.as_path()) {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
+            return Err(Error::new_const(
+                ErrorKind::PermissionDenied,
                 "path out of bounds",
             ));
         }
@@ -161,8 +188,7 @@ impl PhysicalPath {
 }
 
 #[async_trait]
-impl VPath for PhysicalPath {
-    type Metadata = PhysicalMetadata;
+impl VAsyncPath for PhysicalPath {
     type File = PhysicalFile;
     type ReadDir = PhysicalReadDir;
 
@@ -197,8 +223,8 @@ impl VPath for PhysicalPath {
         let path = RelativePathBuf::from(path);
         let fullpath = path.to_logical_path(self.root.as_path());
         if !fullpath.starts_with(self.root.as_path()) {
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
+            return Err(Error::new_const(
+                ErrorKind::PermissionDenied,
                 "path out of bounds",
             ));
         }
@@ -217,8 +243,15 @@ impl VPath for PhysicalPath {
             .unwrap_or_default()
     }
 
-    async fn metadata(&self) -> Result<Self::Metadata> {
-        Ok(PhysicalMetadata(tokio::fs::metadata(&self.fullpath).await?))
+    async fn metadata(&self) -> Result<Metadata> {
+        let meta = tokio::fs::metadata(&self.fullpath).await?;
+
+        let meta = Metadata {
+            kind: FileType::File,
+            size: meta.len(),
+        };
+
+        Ok(meta)
     }
 
     fn to_string(&self) -> String {
@@ -249,23 +282,27 @@ impl VPath for PhysicalPath {
     }
 
     async fn create_dir(&self) -> Result<()> {
-        tokio::fs::create_dir_all(&self.fullpath).await
+        Ok(tokio::fs::create_dir_all(&self.fullpath).await?)
     }
 
     async fn rm(&self) -> Result<()> {
         if self.fullpath.is_dir() {
-            tokio::fs::remove_dir(&self.fullpath).await
+            tokio::fs::remove_dir(&self.fullpath).await?
         } else {
-            tokio::fs::remove_file(&self.fullpath).await
+            tokio::fs::remove_file(&self.fullpath).await?
         }
+
+        Ok(())
     }
 
     async fn rm_all(&self) -> Result<()> {
         if self.fullpath.is_dir() {
-            tokio::fs::remove_dir(&self.fullpath).await
+            tokio::fs::remove_dir(&self.fullpath).await?
         } else {
-            tokio::fs::remove_file(&self.fullpath).await
+            tokio::fs::remove_file(&self.fullpath).await?
         }
+
+        Ok(())
     }
 }
 
@@ -307,7 +344,7 @@ impl Stream for PhysicalReadDir {
                     path,
                 })))
             }
-            Err(err) => Poll::Ready(Some(Err(err))),
+            Err(err) => Poll::Ready(Some(Err(err.into()))),
         }
     }
 }
@@ -348,12 +385,11 @@ impl TryFrom<PathBuf> for PhysicalPath {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Result;
 
     use super::*;
-    use vfs::{OpenOptions, VPath};
+    use vfs::{error::Result, OpenOptions, VAsyncFileExt};
 
-    use futures_util::{AsyncReadExt, StreamExt};
+    use futures_util::StreamExt;
 
     #[tokio::test]
     async fn to_string() {
@@ -367,8 +403,8 @@ mod tests {
         let vfs = PhysicalFS::new(".").await.expect("open fs");
         let path = vfs.path("Cargo.toml").expect("open path");
         let mut file = path.open(OpenOptions::new().read(true)).await.unwrap();
-        let mut string: String = "".to_owned();
-        file.read_to_string(&mut string).await.unwrap();
+        let mut string = Vec::default();
+        file.read_to_end(&mut string).await.unwrap();
         assert!(string.len() > 10);
         assert!(path.exists().await);
         assert!(path.metadata().await.unwrap().is_file());

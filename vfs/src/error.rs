@@ -1,9 +1,13 @@
 use core::fmt;
 
+pub type Result<T> = core::result::Result<T, Error>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorKind {
     Interrupted,
     WriteZero,
+    NotFound,
+    PermissionDenied,
 }
 
 #[derive(Debug)]
@@ -39,5 +43,36 @@ impl From<ErrorKind> for Error {
             kind: value,
             message: "",
         }
+    }
+}
+
+#[cfg(feature = "std")]
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        let kind = match value.kind() {
+            std::io::ErrorKind::NotFound => ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied => ErrorKind::PermissionDenied,
+            std::io::ErrorKind::ConnectionRefused => todo!(),
+            std::io::ErrorKind::ConnectionReset => todo!(),
+            std::io::ErrorKind::ConnectionAborted => todo!(),
+            std::io::ErrorKind::NotConnected => todo!(),
+            std::io::ErrorKind::AddrInUse => todo!(),
+            std::io::ErrorKind::AddrNotAvailable => todo!(),
+            std::io::ErrorKind::BrokenPipe => todo!(),
+            std::io::ErrorKind::AlreadyExists => todo!(),
+            std::io::ErrorKind::WouldBlock => todo!(),
+            std::io::ErrorKind::InvalidInput => todo!(),
+            std::io::ErrorKind::InvalidData => todo!(),
+            std::io::ErrorKind::TimedOut => todo!(),
+            std::io::ErrorKind::WriteZero => todo!(),
+            std::io::ErrorKind::Interrupted => todo!(),
+            std::io::ErrorKind::Unsupported => todo!(),
+            std::io::ErrorKind::UnexpectedEof => todo!(),
+            std::io::ErrorKind::OutOfMemory => todo!(),
+            std::io::ErrorKind::Other => todo!(),
+            _ => todo!(),
+        };
+
+        Error { kind, message: "" }
     }
 }
