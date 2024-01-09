@@ -5,7 +5,7 @@ use vfs::{Error, VPath};
 
 extern crate alloc;
 
-mod glob;
+pub mod glob;
 
 pub fn walk<'a, V: VPath>(path: &V, patterns: &'a [&'a str]) -> Result<WalkIter<'a, V>, Error> {
     WalkIter::new(path, patterns)

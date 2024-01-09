@@ -1,0 +1,18 @@
+[package]
+name = "vfs-resolve"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = ["async"]
+async = ["vfs/async", "async-stream", "futures-core", "futures-lite"]
+
+[dependencies]
+vfs = { path = "../vfs" }
+vfs-glob = { path = "../vfs-glob" }
+
+async-stream = { version = "0.3", optional = true }
+futures-core = { version = "0.3", default-features = false, optional = true }
+futures-lite = { version = "2", optional = true }

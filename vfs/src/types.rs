@@ -107,3 +107,18 @@ impl OpenOptions {
         self
     }
 }
+
+#[cfg(feature = "std")]
+impl From<OpenOptions> for std::fs::OpenOptions {
+    fn from(value: OpenOptions) -> Self {
+        let mut ops = std::fs::OpenOptions::new();
+
+        ops.append(value.append)
+            .read(value.read)
+            .write(value.write)
+            .truncate(value.truncate)
+            .create(value.create);
+
+        ops
+    }
+}

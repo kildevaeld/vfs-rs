@@ -24,7 +24,7 @@ impl VFile for File {
     }
 
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
-        Ok(self.seek(pos.into())?)
+        Ok(self.0.seek(pos.into())?)
     }
 
     fn close(&mut self) -> Result<(), Error> {
@@ -102,7 +102,9 @@ impl VPath for Path {
     }
 
     fn open(&self, options: OpenOptions) -> Result<Self::File, Error> {
-        todo!()
+        let opts: std::fs::OpenOptions = options.into();
+        let file = opts.open(self.fullpath())?;
+        Ok(File(file))
     }
 
     fn read_dir(&self) -> Result<Self::ReadDir, Error> {
@@ -124,11 +126,25 @@ impl VPath for Path {
     }
 
     fn rm(&self) -> Result<(), Error> {
-        todo!()
+        let meta = self.metadata()?;
+        if meta.id_dir() {
+            std::fs::remove_dir(self.fullpath())?
+        } else {
+            std::fs::remove_file(self.fullpath())?
+        }
+
+        Ok(())
     }
 
     fn rm_all(&self) -> Result<(), Error> {
-        todo!()
+        let meta = self.metadata()?;
+        if meta.id_dir() {
+            std::fs::remove_dir_all(self.fullpath())?
+        } else {
+            std::fs::remove_file(self.fullpath())?
+        }
+
+        Ok(())
     }
 }
 
