@@ -16,3 +16,8 @@ vfs-glob = { path = "../vfs-glob" }
 async-stream = { version = "0.3", optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
 futures-lite = { version = "2", optional = true }
+
+[dev-dependencies]
+vfs-std = { path = "../vfs-std" }
+vfs-tokio = { path = "../vfs-tokio" }
+vfs-resolve = { path = ".", features = ["async"] }

@@ -117,6 +117,12 @@ where
                 Some(Ok(next)) => next,
                 Some(Err(err)) => return Some(Err(err)),
                 None => {
+                    if self.ty == ResolveType::File {
+                        self.queue.extend(self.maybequeue.drain(..));
+                    } else {
+                        self.maybequeue.clear();
+                    }
+
                     let Some(new) = self.queue.pop_front() else {
                         return None;
                     };
@@ -151,5 +157,25 @@ where
                 return Some(Ok(next));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use vfs::VFS;
+
+    use super::*;
+
+    #[test]
+    fn test() {
+        let fs = vfs_std::Fs::new(".").expect("open");
+
+        let resolver = Resolver::new(ResolveType::File, &["*.rs"]);
+
+        let mut iter = resolver
+            .resolve(&fs.path(".").expect("open"))
+            .expect("resolver");
+
+        panic!("iter: {:?}", iter.next())
     }
 }
