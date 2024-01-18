@@ -6,6 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-vfs = { path = "../vfs" }
+vfs = { path = "../vfs", features = ["std"] }
 relative-path = { version = "1" }
 pathdiff = { version = "0.2" }
