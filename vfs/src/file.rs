@@ -37,7 +37,7 @@ pub trait VFileExt: VFile {
 
 impl<T> VFileExt for T where T: VFile {}
 
-const DEFAULT_BUF_SIZE: usize = 8 * 1024;
+// const DEFAULT_BUF_SIZE: usize = 8 * 1024;
 
 pub(crate) struct Guard<'a> {
     pub buf: &'a mut Vec<u8>,

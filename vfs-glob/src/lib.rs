@@ -1,6 +1,6 @@
 #![no_std]
 
-use alloc::{collections::VecDeque, vec::Vec};
+use alloc::collections::VecDeque;
 use vfs::{Error, VPath};
 
 extern crate alloc;
@@ -59,7 +59,7 @@ where
                 Err(err) => return Some(Err(err)),
             };
 
-            if metadata.id_dir() {
+            if metadata.is_dir() {
                 self.queue.push_back(next);
             } else if self
                 .patterns

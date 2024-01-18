@@ -127,7 +127,7 @@ impl VPath for Path {
 
     fn rm(&self) -> Result<(), Error> {
         let meta = self.metadata()?;
-        if meta.id_dir() {
+        if meta.is_dir() {
             std::fs::remove_dir(self.fullpath())?
         } else {
             std::fs::remove_file(self.fullpath())?
@@ -138,7 +138,7 @@ impl VPath for Path {
 
     fn rm_all(&self) -> Result<(), Error> {
         let meta = self.metadata()?;
-        if meta.id_dir() {
+        if meta.is_dir() {
             std::fs::remove_dir_all(self.fullpath())?
         } else {
             std::fs::remove_file(self.fullpath())?

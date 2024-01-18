@@ -26,51 +26,6 @@ pin_project_lite::pin_project! {
 
 }
 
-/*
-impl AsyncRead for PhysicalFile {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<Result<usize>> {
-        self.project().file.poll_read(cx, buf)
-    }
-
-    fn poll_read_vectored(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bufs: &mut [io::IoSliceMut<'_>],
-    ) -> Poll<Result<usize>> {
-        self.project().file.poll_read_vectored(cx, bufs)
-    }
-}
-
-impl AsyncWrite for PhysicalFile {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize>> {
-        self.project().file.poll_write(cx, buf)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.project().file.poll_flush(cx)
-    }
-
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.project().file.poll_close(cx)
-    }
-}
-
-impl AsyncSeek for PhysicalFile {
-    fn poll_seek(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        pos: io::SeekFrom,
-    ) -> Poll<Result<u64>> {
-        self.project().file.poll_seek(cx, pos)
-    }
-}
-
- */
-
 impl VAsyncFile for PhysicalFile {
     fn poll_read(
         self: Pin<&mut Self>,

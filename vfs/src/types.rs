@@ -15,7 +15,7 @@ impl Metadata {
         matches!(self.kind, FileType::File)
     }
 
-    pub fn id_dir(&self) -> bool {
+    pub fn is_dir(&self) -> bool {
         matches!(self.kind, FileType::Dir)
     }
 }

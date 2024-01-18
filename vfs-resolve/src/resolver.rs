@@ -58,7 +58,7 @@ impl<'a> Resolver<'a> {
 
                 let meta = next.metadata().await?;
 
-                if meta.id_dir() {
+                if meta.is_dir() {
                     maybe.push_back(next);
                 } else if self
                     .patterns
@@ -136,7 +136,7 @@ where
                 Err(err) => return Some(Err(err)),
             };
 
-            if metadata.id_dir() {
+            if metadata.is_dir() {
                 self.maybequeue.push_back(next);
             } else if self
                 .patterns
