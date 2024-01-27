@@ -21,7 +21,7 @@ pub use self::{
     error::Result,
     file::{VFile, VFileExt},
     fs::*,
-    path::VPath,
+    path::{VPath, VPathExt},
     types::*,
 };
 

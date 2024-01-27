@@ -5,4 +5,4 @@ mod types;
 #[cfg(feature = "util")]
 pub mod util;
 
-pub use self::{boxed::*, file::*, types::*};
+pub use self::{boxed::*, file::*, path_ext::VAsyncPathExt, types::*};
