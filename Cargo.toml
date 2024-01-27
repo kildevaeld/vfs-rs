@@ -2,4 +2,4 @@
 
 resolver = "2"
 
-members = ["vfs", "vfs-tokio", "vfs-resolve", "vfs-glob", "vfs-std"]
+members = ["vfs", "vfs-tokio", "vfs-resolve", "vfs-glob", "vfs-std", "vfs-memory"]
