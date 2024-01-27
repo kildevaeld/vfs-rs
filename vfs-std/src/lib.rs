@@ -117,7 +117,7 @@ impl VPath for Path {
 
         Ok(ReadDir {
             iter: fullpath.read_dir()?,
-            base: fullpath,
+            base: self.path.clone(),
             root: self.root.clone(),
         })
     }
@@ -151,7 +151,7 @@ impl VPath for Path {
 
 pub struct ReadDir {
     iter: std::fs::ReadDir,
-    base: PathBuf,
+    base: RelativePathBuf,
     root: PathBuf,
 }
 
@@ -168,7 +168,7 @@ impl Iterator for ReadDir {
             Err(err) => return Some(Err(err.into())),
         };
 
-        let diff = diff_paths(next.path(), &self.base).unwrap();
+        let diff = diff_paths(next.path(), &self.root).unwrap();
 
         match RelativePathBuf::from_path(diff) {
             Ok(ret) => Some(Ok(Path {
