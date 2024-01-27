@@ -8,13 +8,16 @@ use futures_core::Stream;
 
 use super::file::VAsyncFile;
 
-pub trait VAsyncFS: Send + Sync {
-    type Path: VAsyncPath;
+pub trait VAsyncFS: Send + Sync + Sized {
+    type Path: VAsyncPath<FS = Self>;
     fn path(&self, path: &str) -> Result<Self::Path, Error>;
+
+    fn from_path(path: &Self::Path) -> Result<Self, Error>;
 }
 
 #[async_trait]
 pub trait VAsyncPath: Clone + Send + Sync {
+    type FS: VAsyncFS<Path = Self>;
     type File: VAsyncFile;
     type ReadDir: Stream<Item = Result<Self, Error>>;
 

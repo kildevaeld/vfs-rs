@@ -4,9 +4,11 @@ use crate::{
     error::Error,
     file::VFile,
     types::{Metadata, OpenOptions},
+    VFS,
 };
 
 pub trait VPath: Sized {
+    type FS: VFS<Path = Self>;
     type File: VFile;
     type ReadDir: Iterator<Item = Result<Self, Error>>;
 

@@ -127,6 +127,12 @@ impl VAsyncFS for PhysicalFS {
             fullpath,
         })
     }
+
+    fn from_path(path: &Self::Path) -> Result<Self> {
+        Ok(PhysicalFS {
+            root: path.fullpath.clone().into(),
+        })
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -144,6 +150,7 @@ impl PhysicalPath {
 
 #[async_trait]
 impl VAsyncPath for PhysicalPath {
+    type FS = PhysicalFS;
     type File = PhysicalFile;
     type ReadDir = PhysicalReadDir;
 

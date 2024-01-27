@@ -1,3 +1,5 @@
+use core::any::Any;
+
 use super::{file::VFile, path::VPath};
 use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VFS};
 use alloc::{boxed::Box, string::String};
@@ -47,6 +49,7 @@ pub trait BVPath: Send + Sync {
     fn rm_all(&self) -> Result<(), Error>;
 
     fn box_clone(&self) -> VPathBox;
+    fn into_fs(&self) -> Result<VFSBox, Error>;
 }
 
 struct BVFSBox<V>(V);
@@ -70,6 +73,7 @@ struct BVPathBox<P>(P);
 impl<P: Clone> BVPath for BVPathBox<P>
 where
     P: Send + Sync + VPath + 'static,
+    P::FS: Clone,
 {
     fn file_name(&self) -> Option<&str> {
         self.0.file_name()
@@ -146,6 +150,11 @@ where
     fn box_clone(&self) -> VPathBox {
         Box::new(BVPathBox(self.0.clone()))
     }
+
+    fn into_fs(&self) -> Result<VFSBox, Error> {
+        let path = P::FS::from_path(&self.0)?;
+        Ok(vfs_box(path))
+    }
 }
 
 impl VFile for Box<dyn VFile> {
@@ -183,6 +192,7 @@ impl Clone for VPathBox {
 }
 
 impl VPath for VPathBox {
+    type FS = VFSBox;
     type File = VFileBox;
     type ReadDir = Box<dyn Iterator<Item = Result<VPathBox, Error>>>;
 
@@ -246,6 +256,10 @@ impl VFS for Box<dyn BVFS> {
     fn path(&self, path: &str) -> Result<Self::Path, Error> {
         self.as_ref().path(path)
     }
+
+    fn from_path(path: &Self::Path) -> Result<Self, Error> {
+        path.into_fs()
+    }
 }
 
 impl Clone for Box<dyn BVFS> {
@@ -265,6 +279,7 @@ where
 pub fn vpath_box<V: VPath + 'static + Clone>(path: V) -> VPathBox
 where
     V: Send + Sync + Clone,
+    V::FS: Clone,
 {
     Box::new(BVPathBox(path))
 }

@@ -64,6 +64,8 @@ pub trait BVAsyncPath: Send + Sync {
     async fn rm_all(&self) -> Result<(), Error>;
 
     fn box_clone(&self) -> VAsyncPathBox;
+
+    fn into_fs(&self) -> Result<VAsyncFSBox, Error>;
 }
 
 struct BVAsyncFSBox<V>(V);
@@ -89,6 +91,7 @@ struct BVAsyncPathBox<P>(P);
 impl<P> BVAsyncPath for BVAsyncPathBox<P>
 where
     P: Send + Sync + VAsyncPath + 'static,
+    P::FS: Clone,
     P::ReadDir: Send,
 {
     fn file_name(&self) -> Option<&str> {
@@ -166,6 +169,11 @@ where
 
     fn box_clone(&self) -> VAsyncPathBox {
         Box::new(BVAsyncPathBox(self.0.clone()))
+    }
+
+    fn into_fs(&self) -> Result<VAsyncFSBox, Error> {
+        let path = P::FS::from_path(&self.0)?;
+        Ok(Box::new(BVAsyncFSBox(path)))
     }
 }
 
@@ -256,6 +264,7 @@ where
     S: Stream<Item = Result<P, Error>> + Send,
     P: VAsyncPath + 'static,
     P::ReadDir: Send,
+    P::FS: Clone,
 {
     type Item = Result<VAsyncPathBox, Error>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -281,6 +290,7 @@ impl Clone for VAsyncPathBox {
 
 #[async_trait]
 impl VAsyncPath for VAsyncPathBox {
+    type FS = VAsyncFSBox;
     type File = VAsyncFileBox;
     type ReadDir = Pin<Box<dyn Stream<Item = Result<VAsyncPathBox, Error>> + Send>>;
 
@@ -358,6 +368,10 @@ impl VAsyncFS for Box<dyn BVAsyncFS> {
     fn path(&self, path: &str) -> Result<Self::Path, Error> {
         self.as_ref().path(path)
     }
+
+    fn from_path(path: &Self::Path) -> Result<Self, Error> {
+        path.into_fs()
+    }
 }
 
 pub fn vafs_box<V: VAsyncFS + 'static + Send>(v: V) -> VAsyncFSBox
@@ -371,6 +385,7 @@ where
 pub fn vapath_box<V: VAsyncPath + 'static>(path: V) -> VAsyncPathBox
 where
     V::ReadDir: Send,
+    V::FS: Clone,
 {
     Box::new(BVAsyncPathBox(path))
 }

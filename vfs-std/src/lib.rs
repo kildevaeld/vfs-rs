@@ -45,6 +45,7 @@ impl Path {
 }
 
 impl VPath for Path {
+    type FS = Fs;
     type File = File;
 
     type ReadDir = ReadDir;
@@ -210,6 +211,10 @@ impl VFS for Fs {
             path,
             root: self.0.clone(),
         })
+    }
+
+    fn from_path(path: &Self::Path) -> Result<Self, Error> {
+        Ok(Fs(path.fullpath()))
     }
 }
 
