@@ -1,20 +1,44 @@
-use super::{vpath_box, OpenOptions, VPath, VPathBox};
 use async_trait::async_trait;
 
-#[async_trait]
-pub trait VPathExt: VPath {
-    async fn create(&self) -> Result<Self::File, Erro> {
-        self.open(OpenOptions::default().create(true)).await
-    }
+use crate::{
+    error::ErrorKind, vapath_box, Error, OpenOptions, VAsyncFileExt, VAsyncPath, VAsyncPathBox,
+};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
 
-    fn boxed(self) -> VPathBox
+#[async_trait]
+pub trait VAsyncPathExt: VAsyncPath {
+    fn boxed(self) -> VAsyncPathBox
     where
         Self: Sized + 'static,
-        <Self as VPath>::ReadDir: Send,
-        <Self as VPath>::Metadata: Send,
+        <Self as VAsyncPath>::ReadDir: Send,
+        <Self as VAsyncPath>::FS: Clone,
     {
-        vpath_box(self)
+        vapath_box(self)
+    }
+
+    async fn read(&self) -> Result<Vec<u8>, Error>
+    where
+        <Self as VAsyncPath>::File: Unpin,
+    {
+        let mut file = self.open(OpenOptions::default().read(true)).await?;
+
+        let mut buffer = Vec::default();
+        file.read_to_end(&mut buffer).await?;
+
+        Ok(buffer)
+    }
+
+    async fn read_to_string(&self) -> Result<String, Error>
+    where
+        <Self as VAsyncPath>::File: Unpin,
+    {
+        let buffer = self.read().await?;
+        String::from_utf8(buffer).map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))
     }
 }
 
-impl<P> VPathExt for P where P: VPath {}
+impl<P> VAsyncPathExt for P where P: VAsyncPath {}

@@ -5,6 +5,7 @@ use alloc::{
 
 use crate::{
     error::{Error, ErrorKind},
+    path::VPathExt,
     vfs_box, OpenOptions, VFSBox, VFileExt, VPath,
 };
 
@@ -25,19 +26,11 @@ pub trait VFSExt: VFS {
     }
 
     fn read(&self, path: &str) -> Result<Vec<u8>, Error> {
-        let path = self.path(path)?;
-
-        let mut file = path.open(OpenOptions::default().read(true))?;
-
-        let mut buffer = Vec::default();
-        file.read_to_end(&mut buffer)?;
-
-        Ok(buffer)
+        self.path(path)?.read()
     }
 
     fn read_to_string(&self, path: &str) -> Result<String, Error> {
-        let buffer = self.read(path)?;
-        String::from_utf8(buffer).map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))
+        self.path(path)?.read_to_string()
     }
 }
 

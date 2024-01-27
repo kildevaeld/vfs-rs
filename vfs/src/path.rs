@@ -1,10 +1,13 @@
-use alloc::string::String;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use crate::{
-    error::Error,
+    error::{Error, ErrorKind},
     file::VFile,
     types::{Metadata, OpenOptions},
-    VFS,
+    VFileExt, VFS,
 };
 
 pub trait VPath: Sized {
@@ -41,3 +44,21 @@ pub trait VPath: Sized {
     /// Remove a file or directory and all its contents
     fn rm_all(&self) -> Result<(), Error>;
 }
+
+pub trait VPathExt: VPath {
+    fn read(&self) -> Result<Vec<u8>, Error> {
+        let mut file = self.open(OpenOptions::default().read(true))?;
+
+        let mut buffer = Vec::default();
+        file.read_to_end(&mut buffer)?;
+
+        Ok(buffer)
+    }
+
+    fn read_to_string(&self) -> Result<String, Error> {
+        let buffer = self.read()?;
+        String::from_utf8(buffer).map_err(|err| Error::new(ErrorKind::InvalidData, err.to_string()))
+    }
+}
+
+impl<V> VPathExt for V where V: VPath {}

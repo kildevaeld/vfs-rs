@@ -1,12 +1,13 @@
 use crate::{
     error::Error,
     types::{Metadata, OpenOptions},
+    vafs_box, VAsyncFSBox,
 };
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use async_trait::async_trait;
 use futures_core::Stream;
 
-use super::file::VAsyncFile;
+use super::{file::VAsyncFile, path_ext::VAsyncPathExt};
 
 pub trait VAsyncFS: Send + Sync + Sized {
     type Path: VAsyncPath<FS = Self>;
@@ -14,6 +15,35 @@ pub trait VAsyncFS: Send + Sync + Sized {
 
     fn from_path(path: &Self::Path) -> Result<Self, Error>;
 }
+
+#[async_trait]
+pub trait VAsyncFSExt: VAsyncFS {
+    fn boxed(self) -> VAsyncFSBox
+    where
+        Self: Sized + 'static + Clone,
+        Self::Path: Send + Sync + Clone,
+        <Self::Path as VAsyncPath>::ReadDir: Send,
+    {
+        vafs_box(self)
+    }
+
+    async fn read(&self, path: &str) -> Result<Vec<u8>, Error>
+    where
+        <Self::Path as VAsyncPath>::File: Unpin,
+    {
+        self.path(path)?.read().await
+    }
+
+    async fn read_to_string(&self, path: &str) -> Result<String, Error>
+    where
+        <Self::Path as VAsyncPath>::File: Unpin,
+    {
+        self.path(path)?.read_to_string().await
+    }
+}
+
+#[async_trait]
+impl<T> VAsyncFSExt for T where T: VAsyncFS {}
 
 #[async_trait]
 pub trait VAsyncPath: Clone + Send + Sync {
