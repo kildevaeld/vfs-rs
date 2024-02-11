@@ -136,7 +136,7 @@ impl<V: VPath, P> WalkIter<V, P> {
 
 impl<V, P> Iterator for WalkIter<V, P>
 where
-    V: VPath + Debug,
+    V: VPath,
     P: Patterns,
 {
     type Item = Result<V, Error>;
