@@ -1,8 +1,37 @@
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, vec::Vec};
 use core::fmt::Debug;
 #[cfg(feature = "async")]
 use futures_lite::StreamExt;
 use vfs::{Error, VPath};
+
+pub trait Patterns {
+    fn matches(&self, path: &str) -> bool;
+}
+
+impl<'a, T> Patterns for &'a [T]
+where
+    T: AsRef<str>,
+{
+    fn matches(&self, path: &str) -> bool {
+        self.into_iter()
+            .any(|i| vfs_glob::glob::glob_match(i.as_ref(), path))
+    }
+}
+
+impl<T> Patterns for Vec<T>
+where
+    T: AsRef<str>,
+{
+    fn matches(&self, path: &str) -> bool {
+        (&**self).matches(path)
+    }
+}
+
+impl<'a> Patterns for &'a str {
+    fn matches(&self, path: &str) -> bool {
+        vfs_glob::glob::glob_match(self, path)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolveType {
@@ -10,30 +39,31 @@ pub enum ResolveType {
     File,
 }
 
-pub struct Resolver<'a> {
+pub struct Resolver<P> {
     ty: ResolveType,
-    patterns: &'a [&'a str],
+    patterns: P,
 }
 
-impl<'a> Resolver<'a> {
-    pub fn new(ty: ResolveType, patterns: &'a [&'a str]) -> Resolver<'a> {
+impl<P> Resolver<P> {
+    pub fn new(ty: ResolveType, patterns: P) -> Resolver<P> {
         Resolver { ty, patterns }
     }
 }
 
-impl<'a> Resolver<'a> {
-    pub fn resolve<V: VPath>(self, path: &V) -> Result<WalkIter<'a, V>, Error> {
+impl<P> Resolver<P> {
+    pub fn resolve<V: VPath>(self, path: &V) -> Result<WalkIter<V, P>, Error> {
         WalkIter::new(path, self.ty, self.patterns)
     }
 
     #[cfg(feature = "async")]
-    pub async fn resolve_async<V: vfs::VAsyncPath>(
+    pub async fn resolve_async<'a, V: vfs::VAsyncPath>(
         self,
-        path: &V,
+        path: &'a V,
     ) -> Result<impl futures_core::Stream<Item = Result<V, Error>> + 'a, Error>
     where
         V: 'a,
         V::ReadDir: core::marker::Unpin + 'a,
+        P: Patterns + Send + Sync + 'a,
     {
         let mut mainroot = Some(path.read_dir().await?);
 
@@ -67,8 +97,7 @@ impl<'a> Resolver<'a> {
                     queue.push_back(next);
                 } else if self
                     .patterns
-                    .iter()
-                    .any(|p| vfs_glob::glob::glob_match(&p, &next.to_string()))
+                    .matches(&next.to_string())
                 {
                     if self.ty == ResolveType::Project {
                         mainroot = if let Some(new) = queue.pop_front() {
@@ -86,19 +115,15 @@ impl<'a> Resolver<'a> {
     }
 }
 
-pub struct WalkIter<'a, V: VPath> {
+pub struct WalkIter<V: VPath, P> {
     root: Option<V::ReadDir>,
     queue: VecDeque<V>,
-    patterns: &'a [&'a str],
+    patterns: P,
     ty: ResolveType,
 }
 
-impl<'a, V: VPath> WalkIter<'a, V> {
-    pub fn new(
-        path: &V,
-        ty: ResolveType,
-        patterns: &'a [&'a str],
-    ) -> Result<WalkIter<'a, V>, Error> {
+impl<V: VPath, P> WalkIter<V, P> {
+    pub fn new(path: &V, ty: ResolveType, patterns: P) -> Result<WalkIter<V, P>, Error> {
         let root = path.read_dir()?;
         Ok(WalkIter {
             root: Some(root),
@@ -109,9 +134,10 @@ impl<'a, V: VPath> WalkIter<'a, V> {
     }
 }
 
-impl<'a, V> Iterator for WalkIter<'a, V>
+impl<V, P> Iterator for WalkIter<V, P>
 where
     V: VPath + Debug,
+    P: Patterns,
 {
     type Item = Result<V, Error>;
 
@@ -147,11 +173,7 @@ where
 
             if metadata.is_dir() {
                 self.queue.push_back(next);
-            } else if self
-                .patterns
-                .iter()
-                .any(|p| vfs_glob::glob::glob_match(&p, &next.to_string()))
-            {
+            } else if self.patterns.matches(&next.to_string()) {
                 if self.ty == ResolveType::Project {
                     self.root = if let Some(new) = self.queue.pop_front() {
                         Some(new.read_dir().unwrap())
@@ -175,7 +197,7 @@ mod test {
     fn test() {
         let fs = vfs_std::Fs::new(".").expect("open");
 
-        let resolver = Resolver::new(ResolveType::Project, &["src/**/*.rs"]);
+        let resolver = Resolver::new(ResolveType::Project, &["src/**/*.rs"][..]);
 
         let mut iter = resolver
             .resolve(&fs.path(".").expect("open"))
