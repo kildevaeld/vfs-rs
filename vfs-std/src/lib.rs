@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Seek, Write},
     os::unix::fs::MetadataExt,
-    path::PathBuf,
+    path::{Path as StdPath, PathBuf},
 };
 
 use pathdiff::diff_paths;
@@ -186,9 +186,13 @@ impl Iterator for ReadDir {
 pub struct Fs(PathBuf);
 
 impl Fs {
-    pub fn new(path: impl AsRef<std::path::Path>) -> Result<Fs, Error> {
+    pub fn new(path: impl AsRef<StdPath>) -> Result<Fs, Error> {
         let path = path.as_ref().canonicalize()?;
         Ok(Fs(path))
+    }
+
+    pub fn root(&self) -> &StdPath {
+        self.0.as_path()
     }
 }
 
@@ -225,6 +229,8 @@ mod test {
     #[test]
     fn test() {
         let fs = Fs::new(".").expect("root");
+
+        assert_eq!(fs.root(), std::env::current_dir().unwrap());
 
         let path = fs.path(".").expect("path");
 

@@ -1,4 +1,5 @@
 use alloc::collections::VecDeque;
+use core::fmt::Debug;
 #[cfg(feature = "async")]
 use futures_lite::StreamExt;
 use vfs::{Error, VPath};
@@ -34,14 +35,18 @@ impl<'a> Resolver<'a> {
         V: 'a,
         V::ReadDir: core::marker::Unpin + 'a,
     {
-        let mut root = path.read_dir().await?;
+        let mut mainroot = Some(path.read_dir().await?);
 
         Ok(async_stream::try_stream! {
 
             let mut queue = VecDeque::<V>::default();
-            let mut maybe = VecDeque::default();
 
             loop {
+                let root = match &mut mainroot {
+                    Some(root) => root,
+                    None => break,
+                };
+
                 let next = match root.try_next().await? {
                     Some(next) => next,
                     None => {
@@ -49,28 +54,29 @@ impl<'a> Resolver<'a> {
                             break;
                         };
 
-                        let readdir = new.read_dir().await?;
+                        let readdir =  new.read_dir().await?;
 
-                        root = readdir;
+                        mainroot = Some(readdir);
                         continue;
                     }
                 };
 
-                let meta = next.metadata().await?;
+                let metadata =  next.metadata().await?;
 
-                if meta.is_dir() {
-                    maybe.push_back(next);
+                if metadata.is_dir() {
+                    queue.push_back(next);
                 } else if self
                     .patterns
                     .iter()
                     .any(|p| vfs_glob::glob::glob_match(&p, &next.to_string()))
                 {
-                    if self.ty == ResolveType::File {
-                        queue.extend(maybe.drain(..));
-                    } else {
-                        maybe.clear();
+                    if self.ty == ResolveType::Project {
+                        mainroot = if let Some(new) = queue.pop_front() {
+                            Some(new.read_dir().await?)
+                        } else {
+                            None
+                        };
                     }
-
                     yield next;
                 }
 
@@ -81,9 +87,8 @@ impl<'a> Resolver<'a> {
 }
 
 pub struct WalkIter<'a, V: VPath> {
-    root: V::ReadDir,
+    root: Option<V::ReadDir>,
     queue: VecDeque<V>,
-    maybequeue: VecDeque<V>,
     patterns: &'a [&'a str],
     ty: ResolveType,
 }
@@ -96,9 +101,8 @@ impl<'a, V: VPath> WalkIter<'a, V> {
     ) -> Result<WalkIter<'a, V>, Error> {
         let root = path.read_dir()?;
         Ok(WalkIter {
-            root,
+            root: Some(root),
             queue: Default::default(),
-            maybequeue: Default::default(),
             patterns,
             ty,
         })
@@ -107,22 +111,21 @@ impl<'a, V: VPath> WalkIter<'a, V> {
 
 impl<'a, V> Iterator for WalkIter<'a, V>
 where
-    V: VPath,
+    V: VPath + Debug,
 {
     type Item = Result<V, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let next = match self.root.next() {
+            let root = match &mut self.root {
+                Some(root) => root,
+                None => return None,
+            };
+
+            let next = match root.next() {
                 Some(Ok(next)) => next,
                 Some(Err(err)) => return Some(Err(err)),
                 None => {
-                    if self.ty == ResolveType::File {
-                        self.queue.extend(self.maybequeue.drain(..));
-                    } else {
-                        self.maybequeue.clear();
-                    }
-
                     let Some(new) = self.queue.pop_front() else {
                         return None;
                     };
@@ -132,7 +135,7 @@ where
                         Err(err) => return Some(Err(err)),
                     };
 
-                    self.root = readdir;
+                    self.root = Some(readdir);
                     continue;
                 }
             };
@@ -143,16 +146,18 @@ where
             };
 
             if metadata.is_dir() {
-                self.maybequeue.push_back(next);
+                self.queue.push_back(next);
             } else if self
                 .patterns
                 .iter()
                 .any(|p| vfs_glob::glob::glob_match(&p, &next.to_string()))
             {
-                if self.ty == ResolveType::File {
-                    self.queue.extend(self.maybequeue.drain(..));
-                } else {
-                    self.maybequeue.clear();
+                if self.ty == ResolveType::Project {
+                    self.root = if let Some(new) = self.queue.pop_front() {
+                        Some(new.read_dir().unwrap())
+                    } else {
+                        None
+                    };
                 }
                 return Some(Ok(next));
             }
@@ -170,7 +175,7 @@ mod test {
     fn test() {
         let fs = vfs_std::Fs::new(".").expect("open");
 
-        let resolver = Resolver::new(ResolveType::File, &["*.rs"]);
+        let resolver = Resolver::new(ResolveType::Project, &["src/**/*.rs"]);
 
         let mut iter = resolver
             .resolve(&fs.path(".").expect("open"))
