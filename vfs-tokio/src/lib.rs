@@ -218,8 +218,14 @@ impl VAsyncPath for PhysicalPath {
     async fn metadata(&self) -> Result<Metadata> {
         let meta = tokio::fs::metadata(&self.fullpath).await?;
 
+        let kind = if meta.is_dir() {
+            FileType::Dir
+        } else {
+            FileType::File
+        };
+
         let meta = Metadata {
-            kind: FileType::File,
+            kind,
             size: meta.len(),
         };
 
