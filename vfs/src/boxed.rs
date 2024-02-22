@@ -50,6 +50,11 @@ pub trait BVPath: Send + Sync {
 
     fn box_clone(&self) -> VPathBox;
     fn into_fs(&self) -> Result<VFSBox, Error>;
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 struct BVFSBox<V>(V);
@@ -155,6 +160,11 @@ where
         let path = P::FS::from_path(&self.0)?;
         Ok(vfs_box(path))
     }
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        self.0.into_path_buf()
+    }
 }
 
 impl VFile for Box<dyn VFile> {
@@ -248,6 +258,11 @@ impl VPath for VPathBox {
     /// Remove a file or directory and all its contents
     fn rm_all(&self) -> Result<(), Error> {
         self.as_ref().rm_all()
+    }
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        self.as_ref().into_path_buf()
     }
 }
 

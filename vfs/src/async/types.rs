@@ -79,6 +79,11 @@ pub trait VAsyncPath: Clone + Send + Sync {
     async fn rm(&self) -> Result<(), Error>;
     /// Remove a file or directory and all its contents
     async fn rm_all(&self) -> Result<(), Error>;
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 pub trait VMetadata {

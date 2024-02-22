@@ -266,6 +266,10 @@ impl VAsyncPath for PhysicalPath {
 
         Ok(())
     }
+
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        Some(self.fullpath.clone())
+    }
 }
 
 impl Debug for PhysicalPath {

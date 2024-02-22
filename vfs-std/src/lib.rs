@@ -147,6 +147,10 @@ impl VPath for Path {
 
         Ok(())
     }
+
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        Some(self.fullpath())
+    }
 }
 
 pub struct ReadDir {

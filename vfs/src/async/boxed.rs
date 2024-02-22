@@ -66,6 +66,11 @@ pub trait BVAsyncPath: Send + Sync {
     fn box_clone(&self) -> VAsyncPathBox;
 
     fn into_fs(&self) -> Result<VAsyncFSBox, Error>;
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 struct BVAsyncFSBox<V>(V);
@@ -174,6 +179,11 @@ where
     fn into_fs(&self) -> Result<VAsyncFSBox, Error> {
         let path = P::FS::from_path(&self.0)?;
         Ok(Box::new(BVAsyncFSBox(path)))
+    }
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        self.0.into_path_buf()
     }
 }
 
