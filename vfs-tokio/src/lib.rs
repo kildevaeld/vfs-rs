@@ -90,7 +90,10 @@ pub struct PhysicalMetadata(Metadata);
 impl VAsyncFS for PhysicalFS {
     type Path = PhysicalPath;
 
-    fn path(&self, path: &str) -> Result<PhysicalPath> {
+    fn path(&self, mut path: &str) -> Result<PhysicalPath> {
+        if path.starts_with("/") {
+            path = &path[1..];
+        }
         let path = RelativePathBuf::from(path).normalize();
 
         let fullpath = path.to_logical_path(self.root.as_path());
@@ -181,7 +184,10 @@ impl VAsyncPath for PhysicalPath {
         self.path.extension()
     }
 
-    fn resolve(&self, path: &str) -> Result<Self> {
+    fn resolve(&self, mut path: &str) -> Result<Self> {
+        if path.starts_with("/") {
+            path = &path[1..];
+        }
         let path = RelativePathBuf::from(path);
         let fullpath = path.to_logical_path(self.root.as_path());
         if !fullpath.starts_with(self.root.as_path()) {
