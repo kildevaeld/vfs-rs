@@ -357,6 +357,11 @@ impl VAsyncPath for VAsyncPathBox {
     async fn rm_all(&self) -> Result<(), Error> {
         self.as_ref().rm_all().await
     }
+
+    #[cfg(feature = "std")]
+    fn into_path_buf(&self) -> Option<std::path::PathBuf> {
+        self.as_ref().into_path_buf()
+    }
 }
 
 impl VMetadata for Box<dyn VMetadata + Send> {
