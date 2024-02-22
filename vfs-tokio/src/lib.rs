@@ -96,7 +96,11 @@ impl VAsyncFS for PhysicalFS {
         }
         let path = RelativePathBuf::from(path).normalize();
 
-        let fullpath = path.to_path(self.root.as_path());
+        let fullpath = if &*self.root == &Path::new("/") {
+            self.root.join(&Path::new(path.as_str()))
+        } else {
+            path.to_logical_path(self.root.as_path())
+        };
 
         if !fullpath.starts_with(self.root.as_path()) {
             return Err(Error::new_const(
