@@ -1,12 +1,12 @@
 use alloc::{
-    string::{String, ToString},
+    string::{String},
     vec::Vec,
 };
 
 use crate::{
-    error::{Error, ErrorKind},
+    error::{Error},
     path::VPathExt,
-    vfs_box, OpenOptions, VFSBox, VFileExt, VPath,
+    vfs_box, VFSBox, VPath,
 };
 
 pub trait VFS: Send + Sync + Sized {
