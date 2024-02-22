@@ -7,7 +7,7 @@ members = [
     "vfs-tokio",
     "vfs-resolve",
     "vfs-glob",
-    "vfs-std",
+    "vfs-std", "vfs-cli",
 
     # "vfs-memory",
 ]
