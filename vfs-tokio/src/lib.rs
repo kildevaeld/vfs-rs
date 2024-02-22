@@ -93,7 +93,9 @@ impl VAsyncFS for PhysicalFS {
     fn path(&self, mut path: &str) -> Result<PhysicalPath> {
         if path.starts_with("/") {
             path = &path[1..];
-        }
+        } else if path == "." {
+            path = "";
+        };
         let path = RelativePathBuf::from(path).normalize();
 
         let fullpath = if &*self.root == &Path::new("/") {
