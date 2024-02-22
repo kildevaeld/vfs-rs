@@ -172,7 +172,12 @@ impl From<std::io::Error> for Error {
             std::io::ErrorKind::UnexpectedEof => ErrorKind::UnexpectedEof,
             std::io::ErrorKind::OutOfMemory => ErrorKind::OutOfMemory,
             std::io::ErrorKind::Other => ErrorKind::Other,
-            _ => ErrorKind::Other,
+            e => {
+                return Error {
+                    kind: ErrorKind::Other,
+                    message: Some(Message::Owned(e.to_string())),
+                }
+            }
         };
 
         Error {
