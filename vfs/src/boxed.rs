@@ -1,4 +1,4 @@
-
+use core::fmt::Debug;
 
 use super::{file::VFile, path::VPath};
 use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VFS};
@@ -15,7 +15,7 @@ pub type VPathBox = Box<dyn BVPath>;
 
 pub type VFileBox = Box<dyn VFile>;
 
-pub trait BVPath: Send + Sync {
+pub trait BVPath: Debug + Send + Sync {
     fn file_name(&self) -> Option<&str>;
 
     /// The extension of this filename
@@ -73,6 +73,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct BVPathBox<P>(P);
 
 impl<P: Clone> BVPath for BVPathBox<P>

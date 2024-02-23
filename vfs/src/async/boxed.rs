@@ -2,6 +2,7 @@ use super::{file::VAsyncFile, types::VAsyncPath};
 use crate::{error::Error, Metadata, OpenOptions, SeekFrom, VAsyncFS, VMetadata};
 use async_trait::async_trait;
 use core::{
+    fmt::Debug,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -28,7 +29,7 @@ pub type VAsyncPathBox = Box<dyn BVAsyncPath>;
 pub type VAsyncFileBox = Pin<Box<dyn VAsyncFile>>;
 
 #[async_trait]
-pub trait BVAsyncPath: Send + Sync {
+pub trait BVAsyncPath: Debug + Send + Sync {
     fn file_name(&self) -> Option<&str>;
 
     /// The extension of this filename
@@ -90,6 +91,7 @@ where
     }
 }
 
+#[derive(Debug)]
 struct BVAsyncPathBox<P>(P);
 
 #[async_trait]

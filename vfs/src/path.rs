@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use alloc::{
     string::{String, ToString},
     vec::Vec,
@@ -10,7 +12,7 @@ use crate::{
     VFileExt, VFS,
 };
 
-pub trait VPath: Sized {
+pub trait VPath: Debug + Sized {
     type FS: VFS<Path = Self>;
     type File: VFile;
     type ReadDir: Iterator<Item = Result<Self, Error>>;

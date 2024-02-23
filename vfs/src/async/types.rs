@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use crate::{
     error::Error,
     types::{Metadata, OpenOptions},
@@ -46,7 +48,7 @@ pub trait VAsyncFSExt: VAsyncFS {
 impl<T> VAsyncFSExt for T where T: VAsyncFS {}
 
 #[async_trait]
-pub trait VAsyncPath: Clone + Send + Sync {
+pub trait VAsyncPath: Debug + Clone + Send + Sync {
     type FS: VAsyncFS<Path = Self>;
     type File: VAsyncFile;
     type ReadDir: Stream<Item = Result<Self, Error>>;
