@@ -2,7 +2,7 @@
 use async_compat::Compat;
 use futures_core::{ready, Stream};
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
-use relative_path::RelativePathBuf;
+use relative_path::{RelativePath, RelativePathBuf};
 use std::{
     fmt::{self, Debug},
     io::{self},
@@ -24,6 +24,14 @@ pin_project_lite::pin_project! {
         file: Compat<File>
     }
 
+}
+
+fn join_path(root: &Path, path: &RelativePath) -> PathBuf {
+    if &root == &Path::new("/") {
+        root.join(&Path::new(path.as_str()))
+    } else {
+        path.to_logical_path(root)
+    }
 }
 
 impl VAsyncFile for PhysicalFile {
@@ -98,11 +106,13 @@ impl VAsyncFS for PhysicalFS {
         };
         let path = RelativePathBuf::from(path).normalize();
 
-        let fullpath = if &*self.root == &Path::new("/") {
-            self.root.join(&Path::new(path.as_str()))
-        } else {
-            path.to_logical_path(self.root.as_path())
-        };
+        // let fullpath = if &*self.root == &Path::new("/") {
+        //     self.root.join(&Path::new(path.as_str()))
+        // } else {
+        //     path.to_logical_path(self.root.as_path())
+        // };
+
+        let fullpath = join_path(&self.root, &path);
 
         if !fullpath.starts_with(self.root.as_path()) {
             return Err(Error::new_const(
@@ -166,7 +176,7 @@ impl VAsyncPath for PhysicalPath {
     fn parent(&self) -> Option<Self> {
         match self.path.parent() {
             Some(path) => {
-                let fullpath = path.to_logical_path(self.root.as_ref());
+                let fullpath = join_path(&self.root, path);
 
                 if !fullpath.starts_with(self.root.as_path()) {
                     return None;
@@ -193,9 +203,13 @@ impl VAsyncPath for PhysicalPath {
     fn resolve(&self, mut path: &str) -> Result<Self> {
         if path.starts_with("/") {
             path = &path[1..];
+        } else if path == "." {
+            path = "";
         }
+
         let path = RelativePathBuf::from(path);
-        let fullpath = path.to_logical_path(self.root.as_path());
+        let fullpath = join_path(&self.root, &path);
+
         if !fullpath.starts_with(self.root.as_path()) {
             return Err(Error::new_const(
                 ErrorKind::PermissionDenied,
