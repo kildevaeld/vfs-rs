@@ -1,0 +1,15 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+std = ["dyn-clone", "futures-core/std", "futures/std"]
+alloc = ["dyn-clone", "futures-core/alloc", "futures/alloc"]
+
+[dependencies]
+futures-core = { version = "0.3", default-features = false }
+pin-project-lite = "0.2"
+dyn-clone = { version = "1", optional = true }
+futures = { version = "0.3", optional = true, default-features = false }

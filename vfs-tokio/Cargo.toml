@@ -1,0 +1,13 @@
+[package]
+name = "vfs-tokio"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vfs = { path = "../vfs", features = ["std"] }
+tokio = { version = "1", features = ["fs"] }
+pin-project-lite = "0.2"
+futures-core = { version = "0.3", default-features = false }
+futures-io = { version = "0.3" }
+async-compat = { version = "0.2" }
+relative-path = { version = "2" }
