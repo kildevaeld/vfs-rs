@@ -1,6 +1,7 @@
 [workspace]
 
-members = [
-  "vfs",
-  "vfs-tokio",
-]
+resolver = "3"
+
+members = ["vfs"
+
+, "vfs-tokio"]
