@@ -22,6 +22,8 @@ impl FS {
             return Err(Error::from(ErrorKind::NotADirectory));
         }
 
+        let path = tokio::fs::canonicalize(path).await?;
+
         Ok(FS(path))
     }
 }

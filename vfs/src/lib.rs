@@ -16,3 +16,10 @@ mod metadata;
 mod path;
 
 pub use self::{error::*, ext::*, file::*, fs::*, metadata::*, path::*};
+
+pub mod prelude {
+    pub use super::{
+        VFS, VFile, VPath,
+        ext::{VFileExt, VPathExt},
+    };
+}

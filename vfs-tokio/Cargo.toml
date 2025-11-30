@@ -15,3 +15,4 @@ relative-path = { version = "2" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["fs", "rt", "macros"] }
+futures = { version = "0.3" }
