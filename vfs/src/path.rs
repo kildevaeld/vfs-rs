@@ -1,3 +1,5 @@
+use std::string::String;
+
 use futures_core::Stream;
 
 use crate::{
@@ -17,6 +19,8 @@ pub trait VPath: Sized {
     type CreateDir: Future<Output = Result<(), Error>>;
     type Remove: Future<Output = Result<(), Error>>;
     type ReadDir: Future<Output = Result<Self::ListDir, Error>>;
+
+    fn to_string(&self) -> String;
 
     fn file_name(&self) -> Option<&str>;
 

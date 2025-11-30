@@ -3,7 +3,7 @@ use core::pin::Pin;
 use dyn_clone::DynClone;
 use futures::{StreamExt, TryStreamExt};
 use futures_core::{future::BoxFuture, stream::BoxStream};
-use std::boxed::Box;
+use std::{boxed::Box, string::String};
 
 use crate::{Error, Metadata, OpenOptions, VFS, VFile, VPath};
 
@@ -36,6 +36,8 @@ dyn_clone::clone_trait_object!(VFSBox);
 
 pub trait VPathBox: DynClone {
     fn file_name(&self) -> Option<&str>;
+
+    fn to_string(&self) -> String;
 
     /// The extension of this filename
     fn extension(&self) -> Option<&str>;
@@ -80,6 +82,10 @@ where
 {
     fn file_name(&self) -> Option<&str> {
         self.0.file_name()
+    }
+
+    fn to_string(&self) -> String {
+        self.0.to_string()
     }
 
     fn extension(&self) -> Option<&str> {
@@ -160,6 +166,10 @@ impl VPath for BoxVPath {
 
     fn file_name(&self) -> Option<&str> {
         (**self).file_name()
+    }
+
+    fn to_string(&self) -> String {
+        (**self).to_string()
     }
 
     fn extension(&self) -> Option<&str> {

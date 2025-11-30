@@ -11,3 +11,7 @@ futures-core = { version = "0.3", default-features = false }
 futures-io = { version = "0.3" }
 async-compat = { version = "0.2" }
 relative-path = { version = "2" }
+
+
+[dev-dependencies]
+tokio = { version = "1", features = ["fs", "rt", "macros"] }

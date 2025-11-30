@@ -68,6 +68,10 @@ impl VPath for Path {
         self.0.file_name().and_then(|m| m.to_str())
     }
 
+    fn to_string(&self) -> String {
+        self.0.display().to_string()
+    }
+
     fn extension(&self) -> Option<&str> {
         self.0.extension().and_then(|m| m.to_str())
     }
